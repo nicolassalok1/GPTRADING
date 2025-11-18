@@ -1,0 +1,13 @@
+{
+  "ETH": {
+    "position": 0,
+    "entry_price": 28.29,
+    "levels": {
+      "1": 26.88,
+      "2": 25.46,
+      "3": 24.05
+    },
+    "drawdown": 0.05,
+    "status": "On"
+  }
+}

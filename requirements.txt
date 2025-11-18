@@ -1,1 +1,5 @@
 streamlit
+openai
+alpaca-trade-api
+python-dotenv
+pandas
