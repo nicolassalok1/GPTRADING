@@ -17,6 +17,7 @@ PORTFOLIO_FILE = "portfolio.json"
 SELL_SYSTEMS_FILE = "sell_systems.json"
 OPTIONS_PORTFOLIO_FILE = "options_portfolio.json"
 EXPIRED_OPTIONS_FILE = "expired_options.json"
+CUSTOM_OPTIONS_FILE = "custom_options.json"
 load_dotenv()
 
 # Alpaca API Setup
@@ -132,6 +133,19 @@ def load_expired_options():
 def save_expired_options(expired_options):
     with open(EXPIRED_OPTIONS_FILE, 'w') as f:
         json.dump(expired_options, f, indent=2)
+
+
+def load_custom_options():
+    try:
+        with open(CUSTOM_OPTIONS_FILE, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def save_custom_options(custom_options):
+    with open(CUSTOM_OPTIONS_FILE, 'w') as f:
+        json.dump(custom_options, f, indent=2)
 
 
 def floor_3(v: float) -> float:
@@ -940,7 +954,6 @@ with tab1:
                 else:
                     pnl_per_unit = avg_price - bs_price
                 total_pnl_opt = pnl_per_unit * quantity
-                s0 = float(pos.get("S0", 0.0) or 0.0)
 
                 options_rows.append({
                     "Contract": contract_symbol,
@@ -1072,6 +1085,7 @@ with tab1:
                             )
                             time.sleep(1)
                             st.rerun()
+
             # Expired options table
             expired_options = load_expired_options()
             if expired_options:
@@ -1102,6 +1116,113 @@ with tab1:
                     st.rerun()
         else:
             st.info("No options positions in portfolio yet.")
+
+        # Custom option purchases (separate list to avoid breaking existing flow)
+        st.markdown("---")
+        st.markdown("### 🧾 Custom option purchases (acheté depuis pricing)")
+        custom_opts = load_custom_options()
+        if custom_opts:
+            # Fetch chains for involved underlyings to compute model price
+            underlyings_custom = sorted({
+                pos.get("underlying")
+                for pos in custom_opts.values()
+                if pos.get("underlying")
+            })
+            chains_by_underlying_custom = {}
+            for und in underlyings_custom:
+                chain_list = fetch_options_chain(und)
+                chains_by_underlying_custom[und] = {
+                    "by_symbol": {c["symbol"]: c for c in chain_list},
+                    "list": chain_list,
+                }
+
+            rows_custom = []
+            for key, pos in custom_opts.items():
+                contract_symbol = pos.get("symbol", key)
+                underlying = pos.get("underlying")
+                option_type = pos.get("type", "").lower()
+                strike = float(pos.get("strike", 0.0) or 0.0)
+                quantity = int(pos.get("quantity", 0) or 0)
+                avg_price = float(pos.get("avg_price", 0.0) or 0.0)
+                side = pos.get("side", "long").lower()
+                style = pos.get("style", "Européenne")
+
+                chain_bucket = chains_by_underlying_custom.get(underlying, {})
+                chain_map = chain_bucket.get("by_symbol", {})
+                chain_list = chain_bucket.get("list", [])
+                chain_entry = chain_map.get(contract_symbol)
+
+                if chain_entry:
+                    S = float(chain_entry.get("spot", 0.0) or 0.0)
+                    sigma = float(chain_entry.get("iv", 0.0) or 0.0)
+                    T = float(chain_entry.get("T", 0.0) or 0.0)
+                else:
+                    try:
+                        expiry_date = datetime.date.fromisoformat(pos.get("expiration"))
+                        days_to_expiry = (expiry_date - datetime.date.today()).days
+                        target_T = max(days_to_expiry, 0) / 365.0
+                    except Exception:
+                        target_T = None
+
+                    if chain_list and target_T is not None and strike > 0:
+                        nearest = None
+                        best_score = float("inf")
+                        for c in chain_list:
+                            cT = float(c.get("T", 0.0) or 0.0)
+                            cK = float(c.get("strike", 0.0) or 0.0)
+                            scale = max(strike, 1.0)
+                            score = abs(cT - target_T) + abs(cK - strike) / scale
+                            if score < best_score:
+                                best_score = score
+                                nearest = c
+                        if nearest:
+                            S = float(nearest.get("spot", 0.0) or 0.0)
+                            sigma = float(nearest.get("iv", 0.0) or 0.0)
+                            T = float(nearest.get("T", target_T) or target_T)
+                        else:
+                            price_data = get_data(underlying) if underlying else {"price": 0}
+                            S = float(price_data.get("price", 0.0) or 0.0)
+                            sigma = 0.2
+                            T = target_T or 0.0
+                    else:
+                        price_data = get_data(underlying) if underlying else {"price": 0}
+                        S = float(price_data.get("price", 0.0) or 0.0)
+                        sigma = 0.2
+                        T = target_T or 0.0
+
+                r = 0.0
+                if S > 0 and strike > 0 and T >= 0:
+                    bs_price = black_scholes_price(S, strike, T, r, max(sigma, 1e-6), option_type)
+                else:
+                    bs_price = 0.0
+
+                if side == "long":
+                    pnl_per_unit = bs_price - avg_price
+                else:
+                    pnl_per_unit = avg_price - bs_price
+                total_pnl_opt = pnl_per_unit * quantity
+
+                rows_custom.append({
+                    "Contract": contract_symbol,
+                    "Style": style,
+                    "Underlying": underlying,
+                    "Type": option_type.capitalize(),
+                    "Side": side.capitalize(),
+                    "Strike": strike,
+                    "Expiration": pos.get("expiration"),
+                    "Quantity": quantity,
+                    "T_0 Price": f"${avg_price:.3f}",
+                    "Current Price (model)": f"${bs_price:.4f}",
+                    "Model P&L": f"${total_pnl_opt:.2f}",
+                })
+
+            if rows_custom:
+                df_custom = pd.DataFrame(rows_custom)
+                st.dataframe(df_custom, width="stretch", hide_index=True)
+            else:
+                st.info("Aucune option custom à afficher pour le moment.")
+        else:
+            st.info("Aucune option custom dans la liste.")
     else:
         st.info("No assets in portfolio. Use the Buy/Sell tab to add positions.")
     
@@ -1579,6 +1700,12 @@ with tab4:
                                     horizontal=True,
                                     key="opt_side_call",
                                 )
+                                style_call = st.selectbox(
+                                    "Type d'option",
+                                    options=["Européenne", "Américaine", "Autre"],
+                                    index=0,
+                                    key="opt_style_call",
+                                )
                                 qty_call = st.number_input(
                                     "Quantity (contracts)",
                                     min_value=1,
@@ -1612,6 +1739,31 @@ with tab4:
                                         )
                                     else:
                                         st.success("Option position updated / closed.")
+
+                                if st.button(
+                                    "🛒 Acheter cette option (liste custom)",
+                                    type="secondary",
+                                    key="buy_custom_call",
+                                ):
+                                    custom_options = load_custom_options()
+                                    unique_key = f"{selected_call['symbol']}_{int(time.time())}"
+                                    custom_options[unique_key] = {
+                                        "symbol": selected_call["symbol"],
+                                        "underlying": selected_call.get("underlying"),
+                                        "type": selected_call.get("type"),
+                                        "style": style_call,
+                                        "side": side_call.lower(),
+                                        "strike": selected_call.get("strike"),
+                                        "expiration": selected_call.get("expiration"),
+                                        "quantity": int(qty_call),
+                                        "avg_price": floor_3(price_call),
+                                        "S0": floor_3(spot_call),
+                                    }
+                                    save_custom_options(custom_options)
+                                    st.success(
+                                        f"Ajouté à la liste custom: {style_call} {side_call} "
+                                        f"{qty_call}x {selected_call['symbol']} @ {price_call:.3f}"
+                                    )
 
                 # Puts tab
                 with tab_put:
@@ -1674,6 +1826,12 @@ with tab4:
                                     horizontal=True,
                                     key="opt_side_put",
                                 )
+                                style_put = st.selectbox(
+                                    "Type d'option",
+                                    options=["Européenne", "Américaine", "Autre"],
+                                    index=0,
+                                    key="opt_style_put",
+                                )
                                 qty_put = st.number_input(
                                     "Quantity (contracts)",
                                     min_value=1,
@@ -1707,6 +1865,31 @@ with tab4:
                                         )
                                     else:
                                         st.success("Option position updated / closed.")
+
+                                if st.button(
+                                    "🛒 Acheter cette option (liste custom)",
+                                    type="secondary",
+                                    key="buy_custom_put",
+                                ):
+                                    custom_options = load_custom_options()
+                                    unique_key = f"{selected_put['symbol']}_{int(time.time())}"
+                                    custom_options[unique_key] = {
+                                        "symbol": selected_put["symbol"],
+                                        "underlying": selected_put.get("underlying"),
+                                        "type": selected_put.get("type"),
+                                        "style": style_put,
+                                        "side": side_put.lower(),
+                                        "strike": selected_put.get("strike"),
+                                        "expiration": selected_put.get("expiration"),
+                                        "quantity": int(qty_put),
+                                        "avg_price": floor_3(price_put),
+                                        "S0": floor_3(spot_put),
+                                    }
+                                    save_custom_options(custom_options)
+                                    st.success(
+                                        f"Ajouté à la liste custom: {style_put} {side_put} "
+                                        f"{qty_put}x {selected_put['symbol']} @ {price_put:.3f}"
+                                    )
 
     elif underlying_symbol and not filtered_chain:
         st.info("No European options found or failed to load chain for this symbol.")

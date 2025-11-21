@@ -3137,7 +3137,6 @@ if sidebar_prefill:
         st.session_state[key] = value
 
 
-st.title("Application unifiée de pricing d'options")
 st.markdown(
     """
     <style>
@@ -3149,11 +3148,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.sidebar.header("Paramètres de Black-Scholes")
+# Initial defaults for shared parameters
 placeholder_vals = st.session_state.get("heston_sidebar_placeholders", {})
 heston_tab_locked = st.session_state.get("heston_tab_locked", False)
 
-default_sidebar_values = {
+default_values = {
     "S0_common": 100.0,
     "K_common": 100.0,
     "T_common": 1.0,
@@ -3161,111 +3160,145 @@ default_sidebar_values = {
     "r_common": 0.05,
     "d_common": 0.0,
     "heatmap_span": 25.0,
+    "heston_kappa_common": 2.0,
+    "heston_theta_common": 0.04,
+    "heston_eta_common": 0.5,
+    "heston_rho_common": -0.7,
+    "heston_v0_common": 0.04,
 }
-for param_key, default_value in default_sidebar_values.items():
-    if param_key not in st.session_state:
-        st.session_state[param_key] = default_value
+for k, v in default_values.items():
+    st.session_state.setdefault(k, v)
 
-S0_common = st.sidebar.number_input(
-    "S0 (spot)",
-    min_value=0.01,
-    step=0.01,
-    key="S0_common",
-    placeholder=placeholder_vals.get("S0_common"),
-    help="Niveau actuel du sous-jacent utilisé comme spot de référence pour les calculs.",
-)
-K_common = st.sidebar.number_input(
-    "K (strike)",
-    min_value=0.01,
-    step=1.0,
-    key="K_common",
-    placeholder=placeholder_vals.get("K_common"),
-    help="Strike de référence de l’option, au centre des grilles de prix.",
-)
-T_common = st.sidebar.number_input(
-    "T (maturité, années)",
-    min_value=0.01,
-    step=0.1,
-    key="T_common",
-    disabled=heston_tab_locked,
-    help=(
-        "Maturité de l’option en années. "
-        "Verrouillée après le téléchargement Heston : cliquez sur un autre onglet pour réactiver."
-        if heston_tab_locked
-        else "Maturité de l’option en années utilisée pour tous les calculs."
-    ),
-)
-sigma_common = st.sidebar.number_input(
-    "Volatilité σ",
-    min_value=0.0001,
-    key="sigma_common",
-    placeholder=placeholder_vals.get("sigma_common"),
-    help="Volatilité annualisée utilisée par défaut dans les modèles de diffusion.",
-)
-r_common = st.sidebar.number_input(
-    "Taux sans risque r",
-    key="r_common",
-    help="Taux sans risque continu utilisé pour actualiser les payoffs.",
-)
-d_common = st.sidebar.number_input(
-    "Dividende continu d",
-    key="d_common",
-    help="Dividende (ou rendement de portage) continu du sous-jacent.",
-)
-heatmap_span = st.sidebar.number_input(
-    "Span autour du spot (heatmaps)",
-    min_value=0.1,
-    step=1.0,
-    help="Définit l'écart symétrique autour du spot utilisé pour les axes Spot / Strike des heatmaps.",
-    key="heatmap_span",
-)
+st.markdown("### Paramètres communs (générés à partir du ticker CBOE)")
+col_tkr, col_fetch = st.columns([2, 1])
+with col_tkr:
+    ticker_common = st.text_input(
+        "Ticker CBOE",
+        value=st.session_state.get("tkr_common", "SPY"),
+        key="tkr_common_input",
+    ).strip().upper()
+with col_fetch:
+    fetch_common = st.button("📡 Charger ticker", key="fetch_common_ticker")
 
-st.sidebar.header("Paramètres de Heston")
-heston_kappa_common = st.sidebar.number_input(
-    "κ",
-    value=float(st.session_state.get("heston_kappa_common", 2.0)),
-    min_value=0.0,
-    key="heston_kappa_input",
-    help="Vitesse de rappel de la variance vers son niveau de long terme.",
-)
+# Charger les données CBOE pour extraire S0 et liste des maturités
+if fetch_common and ticker_common:
+    try:
+        calls_df, puts_df, S0_ref = load_cboe_data(ticker_common)
+        st.session_state["S0_common"] = float(S0_ref)
+        st.session_state["K_common"] = float(round(S0_ref))
+        # concat calls/puts to get unique maturities
+        combined = pd.concat([calls_df[["T"]], puts_df[["T"]]], axis=0)
+        maturities = sorted(combined["T"].dropna().round(2).unique().tolist())
+        st.session_state["cboe_T_options"] = maturities
+        if maturities:
+            st.session_state["T_common"] = float(maturities[0])
+        st.success(f"Ticker {ticker_common} chargé: S0≈{S0_ref:.2f}, maturités trouvées: {len(maturities)}")
+    except Exception as e:
+        st.error(f"Impossible de charger les données CBOE pour {ticker_common}: {e}")
+
+mat_options = st.session_state.get("cboe_T_options", [st.session_state.get("T_common", 1.0)])
+
+col_left, col_right = st.columns(2)
+
+with col_left:
+    S0_common = st.number_input(
+        "S0 (spot)",
+        min_value=0.01,
+        step=0.01,
+        key="S0_common",
+        placeholder=placeholder_vals.get("S0_common"),
+        help="Niveau actuel du sous-jacent utilisé comme spot de référence pour les calculs.",
+    )
+    K_common = st.number_input(
+        "K (strike)",
+        min_value=0.01,
+        step=1.0,
+        key="K_common",
+        placeholder=placeholder_vals.get("K_common"),
+        help="Strike de référence de l’option, au centre des grilles de prix.",
+    )
+    T_common = st.selectbox(
+        "T (maturité, années)",
+        options=mat_options if mat_options else [st.session_state.get("T_common", 1.0)],
+        index=0 if mat_options else 0,
+        key="T_common",
+        help=(
+            "Maturité de l’option en années. "
+            "Verrouillée après le téléchargement Heston : cliquez sur un autre onglet pour réactiver."
+            if heston_tab_locked
+            else "Maturité de l’option en années utilisée pour tous les calculs."
+        ),
+    )
+    sigma_common = st.number_input(
+        "Volatilité σ",
+        min_value=0.0001,
+        key="sigma_common",
+        placeholder=placeholder_vals.get("sigma_common"),
+        help="Volatilité annualisée utilisée par défaut dans les modèles de diffusion.",
+    )
+    r_common = st.number_input(
+        "Taux sans risque r",
+        key="r_common",
+        help="Taux sans risque continu utilisé pour actualiser les payoffs.",
+    )
+    d_common = st.number_input(
+        "Dividende continu d",
+        key="d_common",
+        help="Dividende (ou rendement de portage) continu du sous-jacent.",
+    )
+    heatmap_span = st.number_input(
+        "Span autour du spot (heatmaps)",
+        min_value=0.1,
+        step=1.0,
+        help="Définit l'écart symétrique autour du spot utilisé pour les axes Spot / Strike des heatmaps.",
+        key="heatmap_span",
+    )
+
+with col_right:
+    st.markdown("Paramètres Heston communs")
+    heston_kappa_common = st.number_input(
+        "κ",
+        value=float(st.session_state.get("heston_kappa_common", 2.0)),
+        min_value=0.0,
+        key="heston_kappa_input",
+        help="Vitesse de rappel de la variance vers son niveau de long terme.",
+    )
+    heston_theta_common = st.number_input(
+        "θ",
+        value=float(st.session_state.get("heston_theta_common", 0.04)),
+        min_value=0.0001,
+        key="heston_theta_input",
+        help="Niveau de variance de long terme du modèle de Heston.",
+    )
+    heston_eta_common = st.number_input(
+        "η",
+        value=float(st.session_state.get("heston_eta_common", 0.5)),
+        min_value=0.0001,
+        key="heston_eta_input",
+        help="Volatilité de la variance, c’est-à-dire l’ampleur des fluctuations de variance.",
+    )
+    heston_rho_common = st.number_input(
+        "ρ",
+        value=float(st.session_state.get("heston_rho_common", -0.7)),
+        min_value=-0.99,
+        max_value=0.99,
+        key="heston_rho_input",
+        help="Corrélation entre les chocs sur le sous-jacent et sur la variance.",
+    )
+    heston_v0_common = st.number_input(
+        "v0",
+        value=float(st.session_state.get("heston_v0_common", 0.04)),
+        min_value=0.0001,
+        key="heston_v0_input",
+        help="Variance initiale au temps 0 dans le modèle de Heston.",
+    )
+
 st.session_state["heston_kappa_common"] = float(heston_kappa_common)
-
-heston_theta_common = st.sidebar.number_input(
-    "θ",
-    value=float(st.session_state.get("heston_theta_common", 0.04)),
-    min_value=0.0001,
-    key="heston_theta_input",
-    help="Niveau de variance de long terme du modèle de Heston.",
-)
 st.session_state["heston_theta_common"] = float(heston_theta_common)
-
-heston_eta_common = st.sidebar.number_input(
-    "η",
-    value=float(st.session_state.get("heston_eta_common", 0.5)),
-    min_value=0.0001,
-    key="heston_eta_input",
-    help="Volatilité de la variance, c’est-à-dire l’ampleur des fluctuations de variance.",
-)
 st.session_state["heston_eta_common"] = float(heston_eta_common)
-
-heston_rho_common = st.sidebar.number_input(
-    "ρ",
-    value=float(st.session_state.get("heston_rho_common", -0.7)),
-    min_value=-0.99,
-    max_value=0.99,
-    key="heston_rho_input",
-    help="Corrélation entre les chocs sur le sous-jacent et sur la variance.",
-)
 st.session_state["heston_rho_common"] = float(heston_rho_common)
-
-heston_v0_common = st.sidebar.number_input(
-    "v0",
-    value=float(st.session_state.get("heston_v0_common", 0.04)),
-    min_value=0.0001,
-    key="heston_v0_input",
-    help="Variance initiale au temps 0 dans le modèle de Heston.",
-)
 st.session_state["heston_v0_common"] = float(heston_v0_common)
+
 heatmap_spot_values = _heatmap_axis(S0_common, heatmap_span)
 heatmap_strike_values = _heatmap_axis(K_common, heatmap_span)
 heatmap_maturity_values = _heatmap_axis(T_common, T_common * 0.5)
