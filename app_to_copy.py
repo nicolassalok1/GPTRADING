@@ -18,6 +18,8 @@ import plotly.graph_objects as go
 import requests
 import streamlit as st
 import tensorflow as tf
+import yfinance as yf
+from rates_utils import get_r as get_r_interp, get_q as get_q_yf
 import torch
 import yfinance as yf
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
@@ -528,20 +530,22 @@ def _render_heatmap(
     xlabel: str = "Spot",
     ylabel: str = "Strike",
 ) -> None:
-    fig, ax = plt.subplots()
-    image = ax.imshow(
-        matrix,
-        origin="lower",
-        aspect="auto",
-        extent=[x_values[0], x_values[-1], y_values[0], y_values[-1]],
-        cmap="viridis",
-    )
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.set_title(title)
-    fig.colorbar(image, ax=ax, fraction=0.046, pad=0.04)
-    st.pyplot(fig)
-    plt.close(fig)
+    # Wrap every heatmap in an expander to avoid flooding the UI
+    with st.expander(f"Afficher la heatmap : {title}", expanded=False):
+        fig, ax = plt.subplots()
+        image = ax.imshow(
+            matrix,
+            origin="lower",
+            aspect="auto",
+            extent=[x_values[0], x_values[-1], y_values[0], y_values[-1]],
+            cmap="viridis",
+        )
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.set_title(title)
+        fig.colorbar(image, ax=ax, fraction=0.046, pad=0.04)
+        st.pyplot(fig)
+        plt.close(fig)
 
 
 def _render_call_put_heatmaps(
@@ -2177,7 +2181,7 @@ def download_options_cboe(symbol: str, option_type: str) -> tuple[pd.DataFrame, 
     data = payload.get("data", {})
     options = data.get("options", [])
     spot = float(data.get("current_price") or data.get("close") or np.nan)
-    risk_free = float(data.get("risk_free_rate") or 0.0)
+    risk_free = float(data.get("risk_free_rate") or 0.02)
     dividend_yield = float(data.get("dividend_yield") or 0.0)
     now = pd.Timestamp.utcnow().tz_localize(None)
     pattern = re.compile(rf"^{symbol.upper()}(?P<expiry>\d{{6}})(?P<cp>[CP])(?P<strike>\d+)$")
@@ -2705,7 +2709,7 @@ def ui_heston_full_pipeline(auto_run: bool = False):
                 mode = st.radio(
                     "Choisir un mode",
                     ["Rapide", "Bonne", "Excellente"],
-                    index=1,
+                    index=0,
                     horizontal=True,
                     key="heston_cboe_mode",
                     help="Choisit un compromis entre vitesse de calibration et précision de l’ajustement.",
@@ -2858,7 +2862,6 @@ for k, v in default_values.items():
     st.session_state.setdefault(k, v)
 st.session_state.setdefault("heston_cboe_loaded_once", False)
 
-st.markdown("### Calibration Heston (Carr–Madan) – zone commune")
 ui_heston_full_pipeline()
 
 st.markdown("### Paramètres communs")
@@ -2955,17 +2958,12 @@ with col_left:
     # Volatilité déduite (ou fallback session)
     sigma_common = float(st.session_state.get("sigma_common", 0.2))
     st.markdown(f"**σ (IV déduite)** : {sigma_common:.4f}")
-    r_common = float(st.session_state.get("common_rate", 0.0))
+    r_common = max(float(st.session_state.get("common_rate", 0.0)), 1e-6)
     d_common = float(st.session_state.get("common_dividend", 0.0))
     st.markdown(f"**r (risk-free CBOE)** : {r_common:.4f}")
     st.markdown(f"**q (dividende continu CBOE)** : {d_common:.4f}")
-    heatmap_span = st.number_input(
-        "Span autour du spot (heatmaps)",
-        min_value=0.1,
-        step=1.0,
-        help="Définit l'écart symétrique autour du spot utilisé pour les axes Spot / Strike des heatmaps.",
-        key="heatmap_span",
-    )
+    heatmap_span = float(25.0)
+    st.markdown(f"**Span autour du spot (heatmaps)** : {heatmap_span:.1f}")
 
 with col_right:
     st.markdown("Paramètres Heston communs")
@@ -3014,6 +3012,43 @@ st.session_state["common_sigma"] = common_sigma_value
 st.session_state["common_rate"] = common_rate_value
 st.session_state["common_dividend"] = float(d_common)
 st.session_state["heatmap_span_value"] = float(heatmap_span)
+
+st.markdown("---")
+st.subheader("Historique 1 an du ticker (prix de clôture)")
+hist_fig = None
+tkr_hist = st.session_state.get("heston_cboe_ticker", st.session_state.get("tkr_common", "")).strip().upper()
+if not tkr_hist:
+    st.info("Charge un ticker via la calibration Heston pour afficher l'historique 1 an.")
+else:
+    hist_df = pd.DataFrame()
+    try:
+        hist_df = yf.Ticker(tkr_hist).history(period="1y", interval="1d", auto_adjust=False, actions=False, threads=False)
+    except Exception as _hist_err:
+        # Fallback : yfinance download direct (certaines erreurs d'user agent)
+        try:
+            hist_df = yf.download(tkr_hist, period="1y", interval="1d", progress=False, auto_adjust=False, actions=False)
+        except Exception:
+            st.warning(f"Impossible de récupérer l'historique 1 an : {_hist_err}")
+            hist_df = pd.DataFrame()
+
+    if not hist_df.empty and "Close" in hist_df.columns:
+        hist_fig = go.Figure()
+        hist_fig.add_trace(
+            go.Scatter(
+                x=hist_df.index,
+                y=hist_df["Close"],
+                mode="lines",
+                name="Close",
+            )
+        )
+        hist_fig.update_layout(
+            title=f"{tkr_hist} - Close (1 an)",
+            xaxis_title="Date",
+            yaxis_title="Prix",
+        )
+        st.plotly_chart(hist_fig, use_container_width=True)
+    else:
+        st.info("Pas d'historique disponible pour ce ticker.")
 
 (
     tab_european,
@@ -3442,30 +3477,32 @@ with tab_american:
         int_n_tree = int(n_tree_am)
         if int_n_tree > 10:
             st.info("L'affichage peut devenir difficile à lire pour un nombre de pas supérieur à 10.")
-        with st.spinner("Construction de l'arbre CRR"):
-            spot_tree, value_tree = _build_crr_tree(
-                option=option_am_crr, r=r_common, sigma=sigma_common, n_steps=int_n_tree
-            )
-        st.write("**Représentation graphique**")
-        fig_tree = _plot_crr_tree(spot_tree, value_tree)
-        st.pyplot(fig_tree)
-        plt.close(fig_tree)
-        
-        with st.spinner("Calcul de la heatmap CRR"):
-            call_heatmap_crr, put_heatmap_crr = _compute_american_crr_heatmaps(
-                heatmap_spot_values,
-                heatmap_strike_values,
-                T_common,
-                r_common,
-                sigma_common,
-                int_n_tree,
-            )
-        if cpflag_am == "Call":
-            st.write(f"Heatmap {cpflag_am} (CRR)")
-            _render_heatmap(call_heatmap_crr, heatmap_spot_values, heatmap_strike_values, f"{cpflag_am} (CRR)")
-        else:
-            st.write(f"Heatmap {cpflag_am} (CRR)")
-            _render_heatmap(put_heatmap_crr, heatmap_spot_values, heatmap_strike_values, f"{cpflag_am} (CRR)")
+        # Arbre CRR en dropdown
+        with st.expander("Afficher l'arbre CRR et la heatmap", expanded=False):
+            with st.spinner("Construction de l'arbre CRR"):
+                spot_tree, value_tree = _build_crr_tree(
+                    option=option_am_crr, r=r_common, sigma=sigma_common, n_steps=int_n_tree
+                )
+            st.write("**Représentation graphique**")
+            fig_tree = _plot_crr_tree(spot_tree, value_tree)
+            st.pyplot(fig_tree)
+            plt.close(fig_tree)
+            
+            with st.spinner("Calcul de la heatmap CRR"):
+                call_heatmap_crr, put_heatmap_crr = _compute_american_crr_heatmaps(
+                    heatmap_spot_values,
+                    heatmap_strike_values,
+                    T_common,
+                    r_common,
+                    sigma_common,
+                    int_n_tree,
+                )
+            if cpflag_am == "Call":
+                st.write(f"Heatmap {cpflag_am} (CRR)")
+                _render_heatmap(call_heatmap_crr, heatmap_spot_values, heatmap_strike_values, f"{cpflag_am} (CRR)")
+            else:
+                st.write(f"Heatmap {cpflag_am} (CRR)")
+                _render_heatmap(put_heatmap_crr, heatmap_spot_values, heatmap_strike_values, f"{cpflag_am} (CRR)")
 
 
 with tab_lookback:
@@ -3590,6 +3627,7 @@ with tab_lookback:
             key="n_iters_lb_mc",
             help="Nombre de trajectoires lookback simulées pour chaque couple (S0, T).",
         )
+        r_lb_mc = max(r_common, 1e-6)
         if st.button(
             "Calculer le prix lookback MC",
             key="btn_price_lb_mc",
@@ -3599,7 +3637,7 @@ with tab_lookback:
                     T=float(T_common),
                     t=float(t0_lb_mc),
                     S0=float(common_spot_value),
-                    r=float(r_common),
+                    r=float(r_lb_mc),
                     sigma=float(sigma_common),
                 )
                 price_lb_mc = float(lookback_opt_mc.price_monte_carlo(int(n_iters_lb)))
@@ -3608,7 +3646,7 @@ with tab_lookback:
                 st.error(f"Erreur lookback Monte Carlo : {exc}")
         st.caption(
             f"Paramètres utilisés pour le prix lookback MC : "
-            f"S0={common_spot_value:.4f}, T={T_common:.4f}, r={r_common:.4f}, σ={sigma_common:.4f}, "
+            f"S0={common_spot_value:.4f}, T={T_common:.4f}, r={r_lb_mc:.4f}, σ={sigma_common:.4f}, "
             f"t={t0_lb_mc:.4f}, N_iters={int(n_iters_lb)}"
         )
         with st.spinner("Calcul de la heatmap Monte Carlo"):
@@ -3616,7 +3654,7 @@ with tab_lookback:
                 heatmap_spot_values,
                 heatmap_maturity_values,
                 t0_lb_mc,
-                r_common,
+                r_lb_mc,
                 sigma_common,
                 int(n_iters_lb),
             )
