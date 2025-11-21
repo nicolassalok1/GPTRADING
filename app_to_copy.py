@@ -1829,8 +1829,8 @@ def ui_basket_surface(spot_common, maturity_common, rate_common, strike_common, 
 
     st.subheader("Dataset Basket pour NN")
     st.caption("Dataset généré automatiquement via DataGen (comme dans le notebook).")
-    n_samples = st.slider("Taille du dataset simulé", 1000, 20000, 10000, 1000)
-    method = st.selectbox("Méthode de pricing pour les labels", ["bs", "mc"], index=0)
+    n_samples = st.slider("Taille du dataset simulé", 1000, 20000, 10000, 1000, key=_k("basket_n_samples"))
+    method = st.selectbox("Méthode de pricing pour les labels", ["bs", "mc"], index=0, key=_k("basket_method"))
 
     df = simulate_dataset_notebook(
         n_assets=len(tickers),
@@ -1844,8 +1844,8 @@ def ui_basket_surface(spot_common, maturity_common, rate_common, strike_common, 
     st.write("Aperçu :", df.head())
     st.write("Shape :", df.shape)
 
-    split_ratio = st.slider("Train ratio", 0.5, 0.9, 0.7, 0.05)
-    epochs = st.slider("Epochs d'entraînement", 5, 200, 20, 5)
+    split_ratio = st.slider("Train ratio", 0.5, 0.9, 0.7, 0.05, key=_k("basket_split_ratio"))
+    epochs = st.slider("Epochs d'entraînement", 5, 200, 20, 5, key=_k("basket_epochs"))
 
     x_train, y_train, x_test, y_test = split_data_nn(df, split_ratio=split_ratio)
     Path("data").mkdir(parents=True, exist_ok=True)
@@ -3439,12 +3439,16 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                     "- **\"Pas de temps\"** : nombre de dates intermédiaires sur lesquelles l’algorithme Longstaff–Schwartz peut potentiellement décider d’exercer l’option."
                 ),
             )
+            heston_ready = bool(st.session_state.get("heston_cboe_loaded_once", False))
+            process_options = ["Geometric Brownian Motion", "Heston"] if heston_ready else ["Geometric Brownian Motion"]
             process_type_am = st.selectbox(
                 "Processus sous-jacent",
-                ["Geometric Brownian Motion", "Heston"],
+                process_options,
                 key=_k("process_type_am"),
                 help="Choix du modèle utilisé pour simuler le sous-jacent (GBM ou Heston).",
             )
+            if not heston_ready:
+                st.caption("Heston désactivé : lance d'abord la calibration Heston pour l'activer.")
             n_paths_am = st.number_input(
                 "Trajectoires Monte Carlo",
                 value=1000,
@@ -3463,7 +3467,7 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
             if process_type_am == "Geometric Brownian Motion":
                 process_am = GeometricBrownianMotion(mu=r_common - d_common, sigma=sigma_common)
                 v0_am = None
-            else:
+            elif process_type_am == "Heston":
                 kappa_am = float(st.session_state.get("heston_kappa_common", 2.0))
                 theta_am = float(st.session_state.get("heston_theta_common", 0.04))
                 eta_am = float(st.session_state.get("heston_eta_common", 0.5))
