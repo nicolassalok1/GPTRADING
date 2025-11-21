@@ -26,6 +26,9 @@ api = tradeapi.REST(key, secret_key, BASE_URL, api_version="v2")
 # Page config
 st.set_page_config(page_title="AI Trading Bot", page_icon="📈", layout="wide")
 
+# Always keep cached data fresh on each rerun
+st.cache_data.clear()
+
 # Helper functions
 @st.cache_data(ttl=10)
 def fetch_portfolio():
@@ -598,8 +601,7 @@ with st.expander("📘 Tutoriel d'utilisation de l'outil"):
 # Sidebar
 with st.sidebar:
     st.header("⚙️ Settings")
-    st.info("Configure your trading bot parameters")
-    
+    st.info("Data is refreshed automatically on each interaction")
     if st.button("🔄 Refresh Data"):
         st.cache_data.clear()
         st.rerun()
@@ -1310,8 +1312,12 @@ with tab4:
     ] if underlying_symbol and options_chain else []
 
     if underlying_symbol and filtered_chain:
-        # Step 1: choose maturity T (years) with a selectbox (unique T values, rounded to 2 decimals)
-        unique_T_values = sorted({round(float(c["T"]), 2) for c in filtered_chain})
+        # Step 1: choose maturity T (years) with a selectbox (unique T values > 0, rounded to 2 decimals)
+        unique_T_values = sorted({
+            round(float(c["T"]), 2)
+            for c in filtered_chain
+            if float(c.get("T", 0.0) or 0.0) > 0
+        })
 
         if unique_T_values:
             display_T_values = [f"{t:.2f}" for t in unique_T_values]
