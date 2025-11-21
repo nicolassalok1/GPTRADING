@@ -1855,7 +1855,7 @@ def ui_basket_surface(spot_common, maturity_common, rate_common, strike_common, 
 
     st.write(f"Train size: {x_train.shape[0]} | Test size: {x_test.shape[0]}")
 
-    train_button = st.button("Entraîner le modèle NN", key="btn_train_nn")
+    train_button = st.button("Entraîner le modèle NN", key=_k("btn_train_nn"))
     if not train_button:
         st.info("Clique sur 'Entraîner le modèle NN' pour lancer l'apprentissage.")
         return
@@ -2006,7 +2006,7 @@ def ui_asian_options(
 
     if st.button(
         "Calculer le prix asiatique (Call)",
-        key="btn_price_asian",
+        key=_k("btn_price_asian") if "_k" in globals() else "btn_price_asian",
     ):
         progress = st.progress(0)
         try:
@@ -3402,229 +3402,241 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
             "Les heatmaps affichent les prix call / put sur un carré Spot × Strike centré autour du spot défini dans la barre latérale."
         )
 
-        tab_am_ls, tab_am_crr = st.tabs(
-            ["Longstaff–Schwartz", "Arbre CRR"]
+        st.subheader("Paramètres Monte Carlo communs")
+        mc_n_paths = st.number_input(
+            "Trajectoires Monte Carlo (Heston / GBM)",
+            value=1000,
+            min_value=100,
+            key=_k("n_paths_am_common"),
+            help="Nombre de trajectoires utilisées pour les pricers américains (Heston et GBM).",
+        )
+        mc_n_steps = st.number_input(
+            "Pas de temps (Heston / GBM)",
+            value=50,
+            min_value=1,
+            key=_k("n_steps_am_common"),
+            help="Nombre de dates intermédiaires possibles d’exercice (Heston et GBM).",
         )
 
-        with tab_am_ls:
-            st.subheader("Monte Carlo Longstaff–Schwartz")
-            render_method_explainer(
-                "🧮 Méthode Longstaff–Schwartz (régression Monte Carlo)",
-                (
-                    "- **Objectif** : approximer la stratégie d'exercice optimale d'une option américaine en combinant simulation Monte Carlo et régressions sur la valeur de continuation.\n"
-                    "- **Étape 1 – Simulation des trajectoires** : on simule un grand nombre de trajectoires du sous‑jacent (GBM ou Heston) sous la mesure neutre au risque, en discrétisant `[0, T_common]` en `n_steps_am` pas.\n"
-                    "- **Étape 2 – Calcul des payoffs finaux** : à la dernière date de la grille (≈ maturité), on calcule le payoff européen standard pour chaque trajectoire (call ou put) et on l’utilise comme valeur initiale de continuation.\n"
-                    "- **Étape 3 – Remontée dans le temps (backward induction)** : pour chaque date de la grille, en partant de l’avant‑dernière jusqu’à la première, on considère les trajectoires où l’option est dans la monnaie à cette date.\n"
-                    "- **Étape 4 – Régression de la valeur de continuation** : sur l’ensemble des trajectoires in‑the‑money, on ajuste une régression (souvent polynomiale en `S_t`) entre le prix courant `S_t` et la valeur actualisée des payoffs futurs. Cette régression donne une approximation de la valeur de continuation conditionnelle.\n"
-                    "- **Étape 5 – Décision d’exercice** : pour chaque trajectoire et à chaque date, on compare le payoff d’exercice immédiat à la valeur de continuation régressée. Si le payoff immédiat est plus élevé, on exerce (on fige le payoff sur cette trajectoire et on ignore les valeurs futures) ; sinon, on conserve la valeur de continuation.\n"
-                    "- **Étape 6 – Agrégation des payoffs** : après avoir remonté toutes les dates, chaque trajectoire porte un payoff actualisé correspondant à la stratégie d’exercice optimale approximée. Le prix de l’option est la moyenne de ces payoffs sur l’ensemble des trajectoires.\n"
-                    "- **Étape 7 – Utilisation pour les heatmaps** : le schéma précédent est réutilisé sur une grille de `S0` et `K` pour construire des surfaces de prix américains, qui peuvent être comparées aux surfaces européennes ou CRR.\n"
-                    "- **Intérêt** : la méthode est très flexible (capable de traiter des payoffs complexes) tout en évitant la construction explicite d’un arbre multidimensionnel."
-                ),
+        st.subheader("Longstaff–Schwartz (Heston)")
+        render_method_explainer(
+            "🧮 L-S Heston",
+            (
+                "- Simulation Monte Carlo avec variance stochastique calibrée Heston.\n"
+                "- Régression backward pour l’exercice optimal.\n"
+            ),
+        )
+        heston_ready = bool(st.session_state.get("heston_cboe_loaded_once", False))
+        n_paths_am_hes = mc_n_paths
+        n_steps_am_hes = mc_n_steps
+        v0_am_hes = None
+        process_am_hes = None
+        if heston_ready:
+            kappa_am = float(st.session_state.get("heston_kappa_common", 2.0))
+            theta_am = float(st.session_state.get("heston_theta_common", 0.04))
+            eta_am = float(st.session_state.get("heston_eta_common", 0.5))
+            rho_am = float(st.session_state.get("heston_rho_common", -0.7))
+            v0_am_hes = float(st.session_state.get("heston_v0_common", 0.04))
+            process_am_hes = HestonProcess(
+                mu=r_common - d_common, kappa=kappa_am, theta=theta_am, eta=eta_am, rho=rho_am
             )
-            render_inputs_explainer(
-                "🔧 Paramètres utilisés – Longstaff–Schwartz",
-                (
-                    "- **Paramètres communs de la barre latérale** :\n"
-                    "  - **\"S0 (spot)\"** : niveau de référence du sous‑jacent pour les heatmaps et les simulations.\n"
-                    "  - **\"K (strike)\"** : strike de l’option américaine utilisée pour le payoff.\n"
-                    "  - **\"T (maturité, années)\"** : horizon de temps de l’option américaine, donc durée des trajectoires simulées.\n"
-                    "  - **\"Taux sans risque r\"** et **\"Dividende continu d\"** : entrent dans le drift neutre au risque et dans l’actualisation des payoffs.\n"
-                    "  - **\"Volatilité σ\"** : volatilité du sous‑jacent lorsque le processus choisi est un GBM.\n"
-                    "- **\"Processus sous-jacent\"** : menu déroulant qui permet de choisir entre un **Geometric Brownian Motion** et un **processus de Heston** pour simuler `S_t`.\n"
-                    "- **Si \"Geometric Brownian Motion\" est sélectionné** : seules les entrées ci‑dessus (dont \"Volatilité σ\") pilotent la dynamique.\n"
-                    "- **Si \"Heston\" est sélectionné** : les champs suivants apparaissent et décrivent la variance stochastique :\n"
-                    "  - **\"κ (vitesse de rappel)\"**, **\"θ (variance long terme)\"**, **\"η (vol de la variance)\"**, **\"ρ (corrélation)\"**, **\"v0 (variance initiale)\"**.\n"
-                    "- **\"Trajectoires Monte Carlo\"** : nombre de trajectoires utilisées pour estimer le prix américain.\n"
-                    "- **\"Pas de temps\"** : nombre de dates intermédiaires sur lesquelles l’algorithme Longstaff–Schwartz peut potentiellement décider d’exercer l’option."
-                ),
-            )
-            heston_ready = bool(st.session_state.get("heston_cboe_loaded_once", False))
-            process_options = ["Geometric Brownian Motion", "Heston"] if heston_ready else ["Geometric Brownian Motion"]
-            process_type_am = st.selectbox(
-                "Processus sous-jacent",
-                process_options,
-                key=_k("process_type_am"),
-                help="Choix du modèle utilisé pour simuler le sous-jacent (GBM ou Heston).",
-            )
-            if not heston_ready:
-                st.caption("Heston désactivé : lance d'abord la calibration Heston pour l'activer.")
-            n_paths_am = st.number_input(
-                "Trajectoires Monte Carlo",
-                value=1000,
-                min_value=100,
-                key=_k("n_paths_am"),
-                help="Nombre de trajectoires Monte Carlo utilisées pour le prix américain.",
-            )
-            n_steps_am = st.number_input(
-                "Pas de temps",
-                value=50,
-                min_value=1,
-                key=_k("n_steps_am"),
-                help="Nombre de dates intermédiaires possibles d’exercice dans Longstaff–Schwartz.",
-            )
-    
-            if process_type_am == "Geometric Brownian Motion":
-                process_am = GeometricBrownianMotion(mu=r_common - d_common, sigma=sigma_common)
-                v0_am = None
-            elif process_type_am == "Heston":
-                kappa_am = float(st.session_state.get("heston_kappa_common", 2.0))
-                theta_am = float(st.session_state.get("heston_theta_common", 0.04))
-                eta_am = float(st.session_state.get("heston_eta_common", 0.5))
-                rho_am = float(st.session_state.get("heston_rho_common", -0.7))
-                v0_am = float(st.session_state.get("heston_v0_common", 0.04))
-                st.caption(
-                    f"Paramètres de Heston (sidebar) : κ={kappa_am:.4f}, θ={theta_am:.4f}, η={eta_am:.4f}, "
-                    f"ρ={rho_am:.4f}, v0={v0_am:.4f}"
-                )
-                process_am = HestonProcess(
-                    mu=r_common - d_common, kappa=kappa_am, theta=theta_am, eta=eta_am, rho=rho_am
-                )
-    
-            if st.button(
-                f"Calculer le prix américain L-S ({cpflag_am})",
-                key=_k("btn_price_am_ls"),
-            ):
-                progress = st.progress(0)
-                try:
-                    option_ls = Option(
-                        s0=S0_common,
-                        T=T_common,
-                        K=K_common,
-                        v0=v0_am,
-                        call=(cpflag_am == "Call"),
-                    )
-                    progress.progress(35)
-                    price_ls = longstaff_schwartz_price(
-                        option=option_ls,
-                        process=process_am,
-                        n_paths=int(n_paths_am),
-                        n_steps=int(n_steps_am),
-                    )
-                    progress.progress(75)
-                    st.success(f"Prix américain Longstaff–Schwartz ({cpflag_am}) = {price_ls:.6f}")
-                except Exception as exc:
-                    st.error(f"Erreur Longstaff–Schwartz : {exc}")
-                finally:
-                    progress.empty()
             st.caption(
-                f"Paramètres utilisés pour le prix unique L-S : "
-                f"S0={S0_common:.4f}, K={K_common:.4f}, T={T_common:.4f}, "
-                f"r={r_common:.4f}, d={d_common:.4f}, σ={sigma_common:.4f}, "
-                f"N_paths={int(n_paths_am)}, N_steps={int(n_steps_am)}"
+                f"Paramètres Heston : κ={kappa_am:.4f}, θ={theta_am:.4f}, η={eta_am:.4f}, ρ={rho_am:.4f}, v0={v0_am_hes:.4f}"
             )
-    
-            with st.spinner("Calcul des heatmaps Longstaff–Schwartz"):
+        else:
+            st.caption("Heston désactivé : fais la calibration Heston pour l’activer.")
+
+        if st.button(
+            f"Calculer le prix américain Heston ({cpflag_am})",
+            key=_k("btn_price_am_heston"),
+            disabled=not heston_ready,
+        ):
+            progress = st.progress(0)
+            try:
+                option_ls = Option(
+                    s0=S0_common,
+                    T=T_common,
+                    K=K_common,
+                    v0=v0_am_hes,
+                    call=(cpflag_am == "Call"),
+                )
+                progress.progress(35)
+                price_ls = longstaff_schwartz_price(
+                    option=option_ls,
+                    process=process_am_hes,
+                    n_paths=int(n_paths_am_hes),
+                    n_steps=int(n_steps_am_hes),
+                )
+                progress.progress(75)
+                st.success(f"Prix américain Heston L-S ({cpflag_am}) = {price_ls:.6f}")
+            except Exception as exc:
+                st.error(f"Erreur Longstaff–Schwartz Heston : {exc}")
+            finally:
+                progress.empty()
+        st.caption(
+            f"Paramètres Heston L-S : S0={S0_common:.4f}, K={K_common:.4f}, T={T_common:.4f}, "
+            f"r={r_common:.4f}, d={d_common:.4f}, σ={sigma_common:.4f}, "
+            f"N_paths={int(mc_n_paths)}, N_steps={int(mc_n_steps)}"
+        )
+        with st.expander("Heatmap Heston (L-S)", expanded=False):
+            if heston_ready:
+                with st.spinner("Calcul des heatmaps Heston L-S"):
+                    call_heatmap_ls, put_heatmap_ls = _compute_american_ls_heatmaps(
+                        heatmap_spot_values,
+                        heatmap_strike_values,
+                        T_common,
+                        process_am_hes,
+                        int(n_paths_am_hes),
+                        int(n_steps_am_hes),
+                        v0_am_hes,
+                    )
+                _render_heatmaps_for_current_option(
+                    "Heston L-S",
+                    call_heatmap_ls,
+                    put_heatmap_ls,
+                    heatmap_spot_values,
+                    heatmap_strike_values,
+                )
+            else:
+                st.info("Heatmap désactivée : calibration Heston requise.")
+
+        st.divider()
+
+        st.subheader("Longstaff–Schwartz (GBM)")
+        render_method_explainer(
+            "🧮 L-S GBM",
+            (
+                "- Simulation GBM (volatilité constante) + régression backward.\n"
+            ),
+        )
+        n_paths_am_gbm = mc_n_paths
+        n_steps_am_gbm = mc_n_steps
+        process_am_gbm = GeometricBrownianMotion(mu=r_common - d_common, sigma=sigma_common)
+
+        if st.button(
+            f"Calculer le prix américain GBM ({cpflag_am})",
+            key=_k("btn_price_am_gbm"),
+        ):
+            progress = st.progress(0)
+            try:
+                option_ls = Option(
+                    s0=S0_common,
+                    T=T_common,
+                    K=K_common,
+                    v0=None,
+                    call=(cpflag_am == "Call"),
+                )
+                progress.progress(35)
+                price_ls = longstaff_schwartz_price(
+                    option=option_ls,
+                    process=process_am_gbm,
+                    n_paths=int(n_paths_am_gbm),
+                    n_steps=int(n_steps_am_gbm),
+                )
+                progress.progress(75)
+                st.success(f"Prix américain GBM L-S ({cpflag_am}) = {price_ls:.6f}")
+            except Exception as exc:
+                st.error(f"Erreur Longstaff–Schwartz GBM : {exc}")
+            finally:
+                progress.empty()
+        st.caption(
+            f"Paramètres GBM L-S : S0={S0_common:.4f}, K={K_common:.4f}, T={T_common:.4f}, "
+            f"r={r_common:.4f}, d={d_common:.4f}, σ={sigma_common:.4f}, "
+            f"N_paths={int(mc_n_paths)}, N_steps={int(mc_n_steps)}"
+        )
+        with st.expander("Heatmap GBM (L-S)", expanded=False):
+            with st.spinner("Calcul des heatmaps GBM L-S"):
                 call_heatmap_ls, put_heatmap_ls = _compute_american_ls_heatmaps(
                     heatmap_spot_values,
                     heatmap_strike_values,
                     T_common,
-                    process_am,
-                    int(n_paths_am),
-                    int(n_steps_am),
-                    v0_am,
+                    process_am_gbm,
+                    int(n_paths_am_gbm),
+                    int(n_steps_am_gbm),
+                    None,
                 )
-            # Heatmap MC (GBM/Heston) – affichage selon le type Call/Put courant
             _render_heatmaps_for_current_option(
-                "Longstaff–Schwartz",
+                "GBM L-S",
                 call_heatmap_ls,
                 put_heatmap_ls,
                 heatmap_spot_values,
                 heatmap_strike_values,
             )
-    
-        with tab_am_crr:
-            st.subheader("Arbre binomial CRR")
-            render_method_explainer(
-                "🌳 Méthode binomiale CRR pour options américaines",
-                (
-                    "- **Étape 1 – Discrétisation de l’horizon** : la maturité `T_common` est découpée en `n_tree_am` pas de temps de durée `Δt = T_common / n_tree_am`.\n"
-                    "- **Étape 2 – Paramétrage de l’arbre** : à partir de `σ` et `Δt`, on construit les facteurs de hausse et de baisse, typiquement `u = e^{σ√Δt}` et `d = 1/u`. On en déduit une probabilité neutre au risque `p` telle que `E_Q[S_{t+Δt}] = S_t e^{(r-d)Δt}`.\n"
-                    "- **Étape 3 – Construction de l’arbre des spots** : en partant de `S0_common`, on génère les valeurs de `S` à chaque nœud du maillage binomial (chaque niveau correspond à un temps, chaque nœud à un nombre de hausses/baisse cumulées).\n"
-                    "- **Étape 4 – Initialisation des payoffs à maturité** : à la dernière ligne de l’arbre (temps `T_common`), on calcule le payoff européen `max(±(S_T-K_common), 0)` pour chaque nœud et on le stocke dans `value_tree`.\n"
-                    "- **Étape 5 – Rétro‑propagation (valeur de continuation)** : en remontant niveau par niveau, on calcule à chaque nœud la valeur de continuation comme espérance actualisée des deux nœuds fils : `V_cont = e^{-r_common Δt} [p V_up + (1-p) V_down]`.\n"
-                    "- **Étape 6 – Prise en compte de l’exercice américain** : pour chaque nœud, on calcule aussi la valeur d’exercice immédiat `V_ex = payoff(S_n)`. La valeur retenue au nœud est `max(V_ex, V_cont)`, ce qui encode la possibilité d’exercer de façon optimale.\n"
-                    "- **Étape 7 – Prix initial et visualisation** : la valeur à la racine de l’arbre est le prix de l’option américaine. L’arbre des spots et de valeurs (`spot_tree`, `value_tree`) est ensuite représenté graphiquement pour montrer les zones où l’exercice anticipé devient optimal.\n"
-                    "- **Étape 8 – Lien avec les heatmaps** : en répétant ce calcul pour différents `S0` et `K`, on peut construire une surface de prix CRR comparable à celles obtenues via Longstaff–Schwartz ou BSM."
-                ),
-            )
-            render_inputs_explainer(
-                "🔧 Paramètres utilisés – CRR",
-                (
-                    "- **\"S0 (spot)\"** : valeur de départ du sous‑jacent à la racine de l’arbre.\n"
-                    "- **\"K (strike)\"** : strike de l’option américaine modélisée sur l’arbre.\n"
-                    "- **\"T (maturité, années)\"** : horizon total de l’option, réparti en `Nombre de pas de l'arbre`.\n"
-                    "- **\"Taux sans risque r\"** : utilisé pour l’actualisation et pour calibrer la probabilité neutre au risque.\n"
-                    "- **\"Volatilité σ\"** : volatilité reproduite par les facteurs de montée et de descente `u` et `d`.\n"
-                    "- **\"Nombre de pas de l'arbre\"** : profondeur de l’arbre binomial (résolution temporelle) choisie via le curseur correspondant."
-                ),
-            )
-            if st.button(
-                f"Calculer le prix américain CRR ({cpflag_am})",
-                key=_k("btn_price_am_crr"),
-            ):
-                try:
-                    option_am_single = Option(
-                        s0=S0_common,
-                        T=T_common,
-                        K=K_common,
-                        call=(cpflag_am == 'Call'),
-                    )
-                    # On utilise un arbre de taille moyenne pour le prix ponctuel
-                    n_steps_single = 50
-                    price_crr_single = crr_pricing(
-                        r=r_common,
-                        sigma=sigma_common,
-                        option=option_am_single,
-                        n=n_steps_single,
-                    )
-                    st.success(f"Prix américain CRR ({cpflag_am}) ≈ {price_crr_single:.6f} (avec {n_steps_single} pas)")
-                except Exception as exc:
-                    st.error(f"Erreur CRR : {exc}")
-            st.caption(
-                f"Paramètres utilisés pour le prix unique CRR : "
-                f"S0={S0_common:.4f}, K={K_common:.4f}, T={T_common:.4f}, "
-                f"r={r_common:.4f}, σ={sigma_common:.4f}"
-            )
-    
-            n_tree_am = st.number_input(
-                "Nombre de pas de l'arbre",
-                value=10,
-                min_value=5,
-                key=_k("n_tree_am"),
-                help="Nombre de pas de temps utilisés dans l’arbre binomial CRR.",
-            )
-            option_am_crr = Option(s0=S0_common, T=T_common, K=K_common, call=cpflag_am == "Call")
-            int_n_tree = int(n_tree_am)
-            if int_n_tree > 10:
-                st.info("L'affichage peut devenir difficile à lire pour un nombre de pas supérieur à 10.")
-            # Arbre CRR en dropdown
-            with st.expander("Afficher l'arbre CRR et la heatmap", expanded=False):
-                with st.spinner("Construction de l'arbre CRR"):
-                    spot_tree, value_tree = _build_crr_tree(
-                        option=option_am_crr, r=r_common, sigma=sigma_common, n_steps=int_n_tree
-                    )
-                st.write("**Représentation graphique**")
-                fig_tree = _plot_crr_tree(spot_tree, value_tree)
-                st.pyplot(fig_tree)
-                plt.close(fig_tree)
-                
-                with st.spinner("Calcul de la heatmap CRR"):
-                    call_heatmap_crr, put_heatmap_crr = _compute_american_crr_heatmaps(
-                        heatmap_spot_values,
-                        heatmap_strike_values,
-                        T_common,
-                        r_common,
-                        sigma_common,
-                        int_n_tree,
-                    )
-                _render_heatmaps_for_current_option(
-                    "CRR",
-                    call_heatmap_crr,
-                    put_heatmap_crr,
+
+        st.divider()
+
+        st.subheader("Arbre binomial CRR")
+        render_method_explainer(
+            "🌳 Arbre CRR",
+            (
+                "- Discrétisation de l’horizon en `n_tree_am` pas.\n"
+                "- Recursion backward avec exercice optimal.\n"
+            ),
+        )
+        if st.button(
+            f"Calculer le prix américain CRR ({cpflag_am})",
+            key=_k("btn_price_am_crr"),
+        ):
+            try:
+                option_am_single = Option(
+                    s0=S0_common,
+                    T=T_common,
+                    K=K_common,
+                    call=(cpflag_am == 'Call'),
+                )
+                n_steps_single = 50
+                price_crr_single = crr_pricing(
+                    r=r_common,
+                    sigma=sigma_common,
+                    option=option_am_single,
+                    n=n_steps_single,
+                )
+                st.success(f"Prix américain CRR ({cpflag_am}) ≈ {price_crr_single:.6f} (avec {n_steps_single} pas)")
+            except Exception as exc:
+                st.error(f"Erreur CRR : {exc}")
+        st.caption(
+            f"Paramètres utilisés pour le prix unique CRR : "
+            f"S0={S0_common:.4f}, K={K_common:.4f}, T={T_common:.4f}, "
+            f"r={r_common:.4f}, σ={sigma_common:.4f}"
+        )
+
+        n_tree_am = st.number_input(
+            "Nombre de pas de l'arbre",
+            value=10,
+            min_value=5,
+            key=_k("n_tree_am"),
+            help="Nombre de pas de temps utilisés dans l’arbre binomial CRR.",
+        )
+        option_am_crr = Option(s0=S0_common, T=T_common, K=K_common, call=cpflag_am == "Call")
+        int_n_tree = int(n_tree_am)
+        if int_n_tree > 10:
+            st.info("L'affichage peut devenir difficile à lire pour un nombre de pas supérieur à 10.")
+        with st.expander("Afficher l'arbre CRR et la heatmap", expanded=False):
+            with st.spinner("Construction de l'arbre CRR"):
+                spot_tree, value_tree = _build_crr_tree(
+                    option=option_am_crr, r=r_common, sigma=sigma_common, n_steps=int_n_tree
+                )
+            st.write("**Représentation graphique**")
+            fig_tree = _plot_crr_tree(spot_tree, value_tree)
+            st.pyplot(fig_tree)
+            plt.close(fig_tree)
+            
+            with st.spinner("Calcul de la heatmap CRR"):
+                call_heatmap_crr, put_heatmap_crr = _compute_american_crr_heatmaps(
                     heatmap_spot_values,
                     heatmap_strike_values,
+                    T_common,
+                    r_common,
+                    sigma_common,
+                    int_n_tree,
                 )
+            _render_heatmaps_for_current_option(
+                "CRR",
+                call_heatmap_crr,
+                put_heatmap_crr,
+                heatmap_spot_values,
+                heatmap_strike_values,
+            )
     
     
     with tab_lookback:
