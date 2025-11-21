@@ -15,6 +15,7 @@ DATA_FILE = "equities.json"
 PORTFOLIO_FILE = "portfolio.json"
 SELL_SYSTEMS_FILE = "sell_systems.json"
 OPTIONS_PORTFOLIO_FILE = "options_portfolio.json"
+EXPIRED_OPTIONS_FILE = "expired_options.json"
 load_dotenv()
 
 # Alpaca API Setup
@@ -25,9 +26,6 @@ api = tradeapi.REST(key, secret_key, BASE_URL, api_version="v2")
 
 # Page config
 st.set_page_config(page_title="AI Trading Bot", page_icon="📈", layout="wide")
-
-# Always keep cached data fresh on each rerun
-st.cache_data.clear()
 
 # Helper functions
 @st.cache_data(ttl=10)
@@ -120,6 +118,19 @@ def load_options_portfolio():
 def save_options_portfolio(options_portfolio):
     with open(OPTIONS_PORTFOLIO_FILE, 'w') as f:
         json.dump(options_portfolio, f, indent=2)
+
+
+def load_expired_options():
+    try:
+        with open(EXPIRED_OPTIONS_FILE, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def save_expired_options(expired_options):
+    with open(EXPIRED_OPTIONS_FILE, 'w') as f:
+        json.dump(expired_options, f, indent=2)
 
 def buy_asset(symbol, quantity, price):
     portfolio = load_portfolio()
@@ -450,6 +461,99 @@ def black_scholes_price(S: float, K: float, T: float, r: float, sigma: float, op
     else:
         return K * math.exp(-r * T) * norm_cdf(-d2) - S * norm_cdf(-d1)
 
+
+def get_underlying_close_on_date(symbol: str, date: datetime.date) -> float:
+    """
+    Try to get the underlying daily close on a given date using Alpaca data.
+    Falls back to current price if historical data is unavailable.
+    """
+    try:
+        start = date.isoformat()
+        end = (date + datetime.timedelta(days=1)).isoformat()
+        barset = api.get_barset(symbol, 'day', limit=1, start=start, end=end)
+        bars = barset.get(symbol)
+        if bars:
+            return float(getattr(bars[0], "c", getattr(bars[0], "close", 0.0)) or 0.0)
+    except Exception as e:
+        st.warning(f"Could not fetch historical close for {symbol} on {date}: {e}")
+
+    price_data = get_data(symbol)
+    return float(price_data.get("price", 0.0) or 0.0)
+
+
+def process_expired_options():
+    """
+    Move expired options from options_portfolio into expired_options,
+    computing payoff and realized PnL using the underlying close on expiration.
+    """
+    options_portfolio = load_options_portfolio()
+    if not options_portfolio:
+        return
+
+    expired_options = load_expired_options()
+    today = datetime.date.today()
+
+    updated_portfolio = dict(options_portfolio)
+
+    for contract_symbol, pos in options_portfolio.items():
+        exp_str = pos.get("expiration")
+        if not exp_str:
+            continue
+
+        try:
+            exp_date = datetime.date.fromisoformat(exp_str)
+        except Exception:
+            continue
+
+        if exp_date > today:
+            continue  # not yet expired
+
+        underlying = pos.get("underlying")
+        option_type = pos.get("type", "").lower()
+        side = pos.get("side", "long").lower()
+        strike = float(pos.get("strike", 0.0) or 0.0)
+        quantity = int(pos.get("quantity", 0) or 0)
+        avg_price = float(pos.get("avg_price", 0.0) or 0.0)
+
+        if quantity <= 0 or not underlying or strike <= 0:
+            continue
+
+        S_T = get_underlying_close_on_date(underlying, exp_date)
+
+        if option_type == "call":
+            payoff_per_unit = max(S_T - strike, 0.0)
+        else:
+            payoff_per_unit = max(strike - S_T, 0.0)
+
+        if side == "long":
+            pnl_per_unit = payoff_per_unit - avg_price
+        else:
+            pnl_per_unit = avg_price - payoff_per_unit
+
+        total_pnl = pnl_per_unit * quantity
+
+        expired_options[contract_symbol] = {
+            "underlying": underlying,
+            "type": option_type,
+            "side": side,
+            "strike": strike,
+            "expiration": exp_str,
+            "quantity": quantity,
+            "avg_price": avg_price,
+            "underlying_close": S_T,
+            "payoff_per_unit": payoff_per_unit,
+            "pnl_per_unit": pnl_per_unit,
+            "pnl_total": total_pnl,
+            "closed_at": today.isoformat(),
+        }
+
+        # Remove from active portfolio
+        updated_portfolio.pop(contract_symbol, None)
+
+    if updated_portfolio != options_portfolio:
+        save_options_portfolio(updated_portfolio)
+        save_expired_options(expired_options)
+
 def chatgpt_response(message: str):
     try:
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -537,6 +641,12 @@ def place_limit_order(symbol, price):
     except Exception as e:
         st.error(f"Error placing order: {e}")
         return False
+
+# Always keep cached data fresh on each rerun
+st.cache_data.clear()
+
+# Process any expired options and realize their PnL
+process_expired_options()
 
 # Streamlit UI
 st.title("📈 AI assisted Trading system")
@@ -702,12 +812,23 @@ with tab1:
         df_my_portfolio = pd.DataFrame(portfolio_data)
         st.dataframe(df_my_portfolio, width="stretch", hide_index=True)
 
+        # Include realized PnL from expired options
+        expired_options = load_expired_options()
+        realized_pnl_options = sum(
+            float(opt.get("pnl_total", 0.0) or 0.0) for opt in expired_options.values()
+        )
+
         total_pnl_pct = (total_pnl / total_notional * 100) if total_notional > 0 else 0
+        total_pnl_with_expired = total_pnl + realized_pnl_options
         val_col, pnl_col = st.columns(2)
         with val_col:
             st.metric("Total Portfolio Value", f"${total_value:.2f}")
         with pnl_col:
-            st.metric("Total P&L", f"${total_pnl:.2f}", delta=f"{total_pnl_pct:.2f}%")
+            st.metric(
+                "Total P&L (incl. expired options)",
+                f"${total_pnl_with_expired:.2f}",
+                delta=f"{total_pnl_pct:.2f}%",
+            )
 
         # Options portfolio section
         st.markdown("---")
@@ -927,6 +1048,34 @@ with tab1:
                             )
                             time.sleep(1)
                             st.rerun()
+            # Expired options table
+            expired_options = load_expired_options()
+            if expired_options:
+                st.markdown("---")
+                st.markdown("#### Expired Options (Realized PnL)")
+                expired_rows = []
+                for contract_symbol, opt in expired_options.items():
+                    expired_rows.append({
+                        "Contract": contract_symbol,
+                        "Underlying": opt.get("underlying"),
+                        "Type": opt.get("type", "").capitalize(),
+                        "Side": opt.get("side", "long").capitalize(),
+                        "Strike": opt.get("strike"),
+                        "Expiration": opt.get("expiration"),
+                        "Quantity": opt.get("quantity"),
+                        "Avg Price": f"${float(opt.get('avg_price', 0.0) or 0.0):.4f}",
+                        "Underlying Close": f"${float(opt.get('underlying_close', 0.0) or 0.0):.2f}",
+                        "Total P&L": f"${float(opt.get('pnl_total', 0.0) or 0.0):.2f}",
+                        "Closed At": opt.get("closed_at"),
+                    })
+                df_expired = pd.DataFrame(expired_rows)
+                st.dataframe(df_expired, width="stretch", hide_index=True)
+
+                if st.button("🧹 Clear expired options", key="clear_expired_options"):
+                    save_expired_options({})
+                    st.success("Cleared expired options from dashboard (realized PnL remains in the total).")
+                    time.sleep(1)
+                    st.rerun()
         else:
             st.info("No options positions in portfolio yet.")
     else:
