@@ -1,6 +1,7 @@
 import streamlit as st
 from openai import OpenAI
 import os
+from pathlib import Path
 import json
 import alpaca_trade_api as tradeapi
 import time
@@ -10,6 +11,7 @@ import requests
 import datetime
 import math
 import runpy
+from rates_utils import get_r
 
 # Configuration
 DATA_FILE = "equities.json"
@@ -883,7 +885,7 @@ with tab1:
 
         # Forward portfolio section
         st.markdown("---")
-        st.markdown("### 📂 Forward Portfolio")
+        st.markdown("### 🚀 Forward Portfolio")
         forwards_dash = load_forwards()
         if forwards_dash:
             fwd_rows = []
@@ -924,7 +926,7 @@ with tab1:
 
         # Options portfolio section
         st.markdown("---")
-        st.markdown("### 📂 Options Portfolio")
+        st.markdown("### 🧾 Options Portfolio")
         options_portfolio = load_options_portfolio()
         if options_portfolio:
             # Fetch CBOE chains per underlying to derive spot, IV and T
@@ -1631,13 +1633,25 @@ with tab4:
             """
         )
 
-    st.subheader("🧾 Trade Forward")
+    st.subheader("🚀 Trade Forward")
 
-    fwd_symbol = st.text_input(
-        "Underlying symbol",
-        placeholder="e.g., AAPL",
-        key="fwd_symbol",
-    ).upper()
+    col_sym, col_fetch = st.columns([3, 1], vertical_alignment="bottom")
+    with col_sym:
+        fwd_symbol = st.text_input(
+            "Underlying symbol",
+            placeholder="e.g., AAPL",
+            key="fwd_symbol",
+        ).upper()
+    with col_fetch:
+        if st.button("🔍 Fetch spot", key="btn_fetch_forward_spot"):
+            price_data = get_data(fwd_symbol) if fwd_symbol else {"price": 0}
+            spot_now_fetch = float(price_data.get("price", 0.0) or 0.0)
+            if spot_now_fetch > 0:
+                st.session_state["fwd_spot_symbol"] = fwd_symbol
+                st.session_state["fwd_spot_value"] = spot_now_fetch
+                st.success(f"Spot {fwd_symbol} ≈ ${spot_now_fetch:.4f}")
+            else:
+                st.warning("Spot introuvable pour ce ticker.")
 
     today = datetime.date.today()
     default_maturity = today + datetime.timedelta(days=30)
@@ -1656,16 +1670,35 @@ with tab4:
         key="fwd_qty",
     )
 
-    price_data = get_data(fwd_symbol) if fwd_symbol else {"price": 0}
-    default_price = float(price_data.get("price", 0.0) or 0.0)
-    fwd_price = st.number_input(
-        "Forward price",
-        min_value=0.0,
-        value=default_price,
-        step=0.01,
-        key="fwd_price",
-        help="Prix auquel vous acceptez d'acheter/vendre le sous-jacent à l'échéance.",
-    )
+    spot_now = 0.0
+    if fwd_symbol and st.session_state.get("fwd_spot_symbol") == fwd_symbol:
+        spot_now = float(st.session_state.get("fwd_spot_value", 0.0) or 0.0)
+    if spot_now <= 0 and fwd_symbol:
+        price_data = get_data(fwd_symbol)
+        spot_now = float(price_data.get("price", 0.0) or 0.0)
+    if fwd_symbol:
+        if spot_now > 0:
+            days_to_mat = max((fwd_maturity - today).days, 0)
+            T_years = days_to_mat / 365.0
+            r_forward = get_r(T_years) if T_years > 0 else get_r(0.1)
+            forward_price = spot_now * math.exp(r_forward * T_years)
+            pill = (
+                f"<div style='display:flex;flex-wrap:wrap;gap:0.6rem;margin-top:0.6rem;'>"
+                f"<span style='background:#e8f5e9;color:#1b5e20;padding:6px 14px;border-radius:999px;font-weight:600;'>"
+                f"Spot {fwd_symbol} = {spot_now:.4f}</span>"
+                f"<span style='background:#e3f2fd;color:#0d47a1;padding:6px 14px;border-radius:999px;font-weight:600;'>"
+                f"r = {r_forward:.4f}</span>"
+                f"<span style='background:#fffde7;color:#f57f17;padding:6px 14px;border-radius:999px;font-weight:600;'>"
+                f"T = {T_years:.3f}y</span>"
+                f"<span style='background:#e8f5e9;color:#1b5e20;padding:6px 14px;border-radius:999px;font-weight:700;'>"
+                f"F ≈ {forward_price:.4f}</span></div>"
+            )
+            st.markdown(pill, unsafe_allow_html=True)
+        else:
+            st.warning("Impossible de récupérer le spot, tu peux quand même enregistrer mais le prix forward restera nul.")
+            forward_price = 0.0
+    else:
+        forward_price = 0.0
 
     fwd_side_label = st.radio(
         "Position",
@@ -1676,27 +1709,27 @@ with tab4:
     fwd_side = "long" if fwd_side_label.startswith("Long") else "short"
 
     if st.button("Enregistrer le forward", type="primary", key="btn_save_forward"):
-        if fwd_symbol and fwd_price > 0:
+        if fwd_symbol and forward_price > 0:
             forwards = load_forwards()
             uid = f"{fwd_symbol}_{fwd_maturity.isoformat()}_{int(time.time())}"
             forwards[uid] = {
                 "symbol": fwd_symbol,
                 "maturity": fwd_maturity.isoformat(),
-                "forward_price": round(float(fwd_price), 4),
+                "forward_price": round(float(forward_price), 4),
                 "quantity": int(fwd_qty),
                 "side": fwd_side,
                 "created_at": time.strftime('%Y-%m-%d %H:%M:%S'),
-                "spot_at_trade": round(default_price, 4),
+                "spot_at_trade": round(spot_now, 4),
             }
             save_forwards(forwards)
-            st.success(f"Forward {fwd_side.upper()} sur {fwd_symbol} enregistré pour {fwd_maturity} à {fwd_price:.4f}.")
+            st.success(f"Forward {fwd_side.upper()} sur {fwd_symbol} enregistré pour {fwd_maturity} à {forward_price:.4f}.")
             time.sleep(1)
             st.rerun()
         else:
-            st.error("Renseigne un symbole et un prix forward strictement positif.")
+            st.error("Renseigne un symbole et assure-toi que le spot est disponible (>0) pour fixer le prix forward.")
 
     st.markdown("---")
-    st.markdown("### 📂 Forward Portfolio")
+    st.markdown("### 🚀 Forward Portfolio")
     forwards = load_forwards()
     if forwards:
         rows = []

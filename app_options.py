@@ -3748,23 +3748,42 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
         ]
     )
 
-    tab_european = tab_american = tab_bermudan = tab_grp_vanilla
+    with tab_grp_vanilla:
+        tab_european, tab_american, tab_bermudan = st.tabs(["Européenne", "Américaine", "Bermuda"])
 
-    tab_asian = tab_lookback = tab_asian_geo = tab_lookback_fixed = tab_grp_path
-    tab_forward_start = tab_cliquet = tab_grp_path
+    with tab_grp_path:
+        (
+            tab_asian,
+            tab_asian_geo,
+            tab_lookback,
+            tab_lookback_fixed,
+            tab_forward_start,
+            tab_cliquet,
+        ) = st.tabs(["Asian", "Asian géométrique", "Lookback", "Lookback fixed", "Forward-start", "Cliquet / Ratchet"])
 
-    tab_barrier = tab_binary_barrier = tab_grp_barrier
+    with tab_grp_barrier:
+        tab_barrier, tab_binary_barrier = st.tabs(["Barrière", "Binary barrière"])
 
-    tab_straddle = tab_strangle = tab_call_spread = tab_put_spread = tab_grp_spreads
-    tab_butterfly = tab_condor = tab_iron_condor = tab_iron_bfly = tab_grp_spreads
+    with tab_grp_spreads:
+        (
+            tab_straddle,
+            tab_strangle,
+            tab_call_spread,
+            tab_put_spread,
+            tab_butterfly,
+            tab_condor,
+            tab_iron_condor,
+            tab_iron_bfly,
+        ) = st.tabs(["Straddle", "Strangle", "Call spread", "Put spread", "Butterfly", "Condor", "Iron Condor", "Iron Butterfly"])
 
-    tab_calendar = tab_diagonal = tab_grp_calendar
+    with tab_grp_calendar:
+        tab_calendar, tab_diagonal = st.tabs(["Calendar spread", "Diagonal spread"])
 
-    tab_digital = tab_asset_on = tab_chooser = tab_quanto = tab_rainbow = tab_grp_exotics
-    tab_forward_start = tab_forward_start
-    tab_cliquet = tab_cliquet
+    with tab_grp_exotics:
+        tab_digital, tab_asset_on, tab_chooser, tab_quanto, tab_rainbow = st.tabs(["Digital", "Asset-or-nothing", "Chooser", "Quanto", "Rainbow"])
 
-    tab_basket = tab_grp_basket
+    with tab_grp_basket:
+        (tab_basket,) = st.tabs(["Basket"])
     
     
     with tab_european:

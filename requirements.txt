@@ -13,4 +13,3 @@ requests
 openai
 alpaca-trade-api
 python-dotenv
-numba

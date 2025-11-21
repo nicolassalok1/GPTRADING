@@ -7,11 +7,15 @@ Utilities to fetch risk-free rates and dividend yield using yfinance.
 
 from __future__ import annotations
 
+import os
 import time
+import math
+import subprocess
 from typing import Dict, List, Tuple
 
 import numpy as np
 import yfinance as yf
+from pathlib import Path
 
 # Symbols for risk-free proxies
 RATE_SYMBOLS: Dict[str, float] = {
@@ -22,6 +26,7 @@ RATE_SYMBOLS: Dict[str, float] = {
 
 MAX_RETRIES = 3
 SLEEP_BETWEEN = 1.0
+DEFAULT_RF = float(os.getenv("DEFAULT_RF_RATE", "0.02"))
 
 
 def _fetch_last_close(symbol: str) -> float:
@@ -48,7 +53,28 @@ def get_r(maturity_years: float) -> float:
     """
     Interpolate risk-free rate r(T) in decimal from ^IRX (≈0.25y), ^FVX (5y), ^TNX (10y).
     Values from yfinance are percentages; convert to decimal before interpolation.
+    If USE_STATIC_RF_RATE=1, returns DEFAULT_RF_RATE. Otherwise calls the CLI helper
+    fetch_r_cli.py (subprocess) to avoid import side-effects inside Streamlit.
     """
+    if os.getenv("USE_STATIC_RF_RATE", "0").lower() in {"1", "true", "yes"}:
+        return DEFAULT_RF
+
+    cli_path = Path(__file__).resolve().parent / "fetch_r_cli.py"
+    if cli_path.exists():
+        try:
+            res = subprocess.run(
+                [sys.executable, str(cli_path), str(float(maturity_years))],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=8,
+            )
+            val = float(res.stdout.strip())
+            if math.isfinite(val) and val > 0:
+                return val
+        except Exception:
+            pass
+
     points: List[Tuple[float, float]] = []
     for sym, mat in RATE_SYMBOLS.items():
         try:
@@ -58,7 +84,7 @@ def get_r(maturity_years: float) -> float:
             continue
 
     if not points:
-        return 0.02  # fallback
+        return DEFAULT_RF  # fallback
 
     # Sort by maturity
     points.sort(key=lambda x: x[0])
