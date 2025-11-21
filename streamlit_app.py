@@ -9,6 +9,7 @@ import pandas as pd
 import requests
 import datetime
 import math
+import runpy
 
 # Configuration
 DATA_FILE = "equities.json"
@@ -738,11 +739,12 @@ with st.sidebar:
         st.rerun()
 
 # Main tabs
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊 Dashboard",
     "💰 Buy/Sell",
     "📋 Trading Systems",
     "🧾 Options",
+    "📜 app_to_copy",
 ])
 
 # Tab 1: Dashboard
@@ -1708,6 +1710,13 @@ with tab4:
 
     elif underlying_symbol and not filtered_chain:
         st.info("No European options found or failed to load chain for this symbol.")
+
+# Tab 5: app_to_copy (copie intégrale)
+with tab5:
+    st.header("app_to_copy — reproduction complète")
+    st.caption("Cette section exécute directement app_to_copy.py dans ce contexte, sidebar incluse.")
+    with st.spinner("Chargement de la copie intégrale..."):
+        runpy.run_path("app_to_copy.py", run_name="__app_to_copy__")
 
 # Footer
 st.markdown("---")
