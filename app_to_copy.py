@@ -620,6 +620,239 @@ def _vanilla_price_with_dividend(
     return float(max(price, 0.0))
 
 
+def _digital_cash_or_nothing_price(
+    option_type: str,
+    S0: float,
+    K: float,
+    T: float,
+    r: float,
+    dividend: float,
+    sigma: float,
+    payout: float = 1.0,
+) -> float:
+    if T <= 0 or sigma <= 0 or payout <= 0:
+        return 0.0
+    sqrt_T = sigma * np.sqrt(T)
+    d2 = (np.log(S0 / K) + (r - dividend - 0.5 * sigma * sigma) * T) / sqrt_T
+    disc = payout * np.exp(-r * T)
+    if option_type.lower() in {"call", "c"}:
+        return float(disc * norm.cdf(d2))
+    return float(disc * norm.cdf(-d2))
+
+
+def _asset_or_nothing_price(
+    option_type: str,
+    S0: float,
+    K: float,
+    T: float,
+    r: float,
+    dividend: float,
+    sigma: float,
+) -> float:
+    if T <= 0 or sigma <= 0 or S0 <= 0:
+        return 0.0
+    sqrt_T = sigma * np.sqrt(T)
+    d1 = (np.log(S0 / K) + (r - dividend + 0.5 * sigma * sigma) * T) / sqrt_T
+    disc = S0 * np.exp(-dividend * T)
+    if option_type.lower() in {"call", "c"}:
+        return float(disc * norm.cdf(d1))
+    return float(disc * norm.cdf(-d1))
+
+
+def _chooser_option_price(
+    S0: float,
+    K: float,
+    T: float,
+    t_choice: float,
+    r: float,
+    dividend: float,
+    sigma: float,
+) -> float:
+    # Formula: call(T,K) + put(t_choice, K*exp(- (r - dividend)*(T - t_choice)))
+    call_price = _vanilla_price_with_dividend("call", S0, K, T, r, dividend, sigma)
+    tau = max(0.0, T - t_choice)
+    if tau <= 0:
+        return call_price
+    K_adj = K * np.exp(-r * (T - t_choice))
+    sqrt_tau = sigma * np.sqrt(tau)
+    d1 = (np.log(S0 / K_adj) + (r - dividend + 0.5 * sigma * sigma) * tau) / sqrt_tau
+    d2 = d1 - sqrt_tau
+    put_piece = K_adj * np.exp(-r * t_choice) * norm.cdf(-d2) - S0 * np.exp(-dividend * t_choice) * norm.cdf(-d1)
+    return float(max(call_price + put_piece, 0.0))
+
+
+def _forward_start_price_mc(
+    S0: float,
+    r: float,
+    q: float,
+    sigma: float,
+    T_start: float,
+    T_end: float,
+    k: float,
+    n_paths: int = 5000,
+    n_steps: int = 200,
+    option_type: str = "call",
+) -> float:
+    if T_end <= T_start or sigma <= 0 or n_paths <= 0 or n_steps <= 0:
+        return 0.0
+    dt = T_end / n_steps
+    drift = (r - q - 0.5 * sigma * sigma) * dt
+    diff = sigma * np.sqrt(dt)
+    disc = np.exp(-r * T_end)
+    payoffs = []
+    step_choice = int(T_start / dt)
+    for _ in range(n_paths):
+        s = S0
+        s_start = None
+        for step in range(n_steps):
+            z = np.random.normal()
+            s *= np.exp(drift + diff * z)
+            if s_start is None and step >= step_choice:
+                s_start = s
+        s_start = s if s_start is None else s_start
+        strike_dyn = k * s_start
+        if option_type.lower() in {"call", "c"}:
+            payoff = max(s - strike_dyn, 0.0)
+        else:
+            payoff = max(strike_dyn - s, 0.0)
+        payoffs.append(payoff)
+    return float(disc * np.mean(payoffs))
+
+
+def _binary_barrier_mc(
+    option_type: str,
+    barrier_type: str,
+    direction: str,
+    S0: float,
+    K: float,
+    barrier: float,
+    T: float,
+    r: float,
+    dividend: float,
+    sigma: float,
+    payout: float,
+    n_paths: int,
+    n_steps: int,
+) -> float:
+    if payout <= 0 or barrier <= 0 or n_paths <= 0 or n_steps <= 0:
+        return 0.0
+    dt = T / n_steps
+    drift = (r - dividend - 0.5 * sigma * sigma) * dt
+    diff = sigma * np.sqrt(dt)
+    disc = np.exp(-r * T)
+    hits = []
+    for _ in range(n_paths):
+        s = S0
+        touched = False
+        for _ in range(n_steps):
+            z = np.random.normal()
+            s *= np.exp(drift + diff * z)
+            if (barrier_type == "up" and s >= barrier) or (barrier_type == "down" and s <= barrier):
+                touched = True
+                break
+        if direction == "out":
+            pay = 0.0 if touched else payout
+        else:  # in
+            pay = payout if touched else 0.0
+        # Optional vanilla style digital with strike K at maturity if not handling knock condition
+        if pay == 0.0:
+            if option_type.lower() in {"call", "c"}:
+                pay = payout if s >= K else 0.0
+            else:
+                pay = payout if s <= K else 0.0
+        hits.append(pay)
+    return float(disc * np.mean(hits))
+
+
+def _cliquet_mc(
+    S0: float,
+    r: float,
+    q: float,
+    sigma: float,
+    T: float,
+    n_periods: int,
+    cap: float,
+    floor: float,
+    n_paths: int = 2000,
+    seed: int | None = None,
+) -> float:
+    if n_periods <= 0 or n_paths <= 0 or T <= 0:
+        return 0.0
+    rng = np.random.default_rng(seed)
+    dt = T / n_periods
+    drift = (r - q - 0.5 * sigma * sigma) * dt
+    diff = sigma * np.sqrt(dt)
+    disc = np.exp(-r * T)
+    payoffs = []
+    for _ in range(n_paths):
+        s = S0
+        coupons = []
+        for _ in range(n_periods):
+            z = rng.normal()
+            s_next = s * np.exp(drift + diff * z)
+            ret = (s_next / s) - 1.0
+            coupons.append(np.clip(ret, floor, cap))
+            s = s_next
+        payoffs.append(sum(coupons))
+    return float(disc * np.mean(payoffs))
+
+
+def _quanto_vanilla_price(
+    option_type: str,
+    S0: float,
+    K: float,
+    T: float,
+    r_dom: float,
+    q_for: float,
+    sigma_asset: float,
+    sigma_fx: float,
+    rho: float,
+) -> float:
+    # Simple quanto adjustment on dividend: q* = q_for + rho*sigma_S*sigma_FX
+    q_adj = q_for + rho * sigma_asset * sigma_fx
+    return _vanilla_price_with_dividend(option_type, S0, K, T, r_dom, q_adj, sigma_asset)
+
+
+def _rainbow_two_asset_mc(
+    payoff_on: str,
+    S0_a: float,
+    S0_b: float,
+    sigma_a: float,
+    sigma_b: float,
+    rho: float,
+    K: float,
+    T: float,
+    r: float,
+    q_a: float,
+    q_b: float,
+    n_paths: int = 5000,
+    n_steps: int = 200,
+    option_type: str = "call",
+) -> float:
+    if n_paths <= 0 or n_steps <= 0 or T <= 0:
+        return 0.0
+    dt = T / n_steps
+    disc = np.exp(-r * T)
+    payoff_list = []
+    for _ in range(n_paths):
+        s_a, s_b = S0_a, S0_b
+        for _ in range(n_steps):
+            z1 = np.random.normal()
+            z2 = np.random.normal()
+            z_b = rho * z1 + np.sqrt(max(0.0, 1 - rho**2)) * z2
+            s_a *= np.exp((r - q_a - 0.5 * sigma_a * sigma_a) * dt + sigma_a * np.sqrt(dt) * z1)
+            s_b *= np.exp((r - q_b - 0.5 * sigma_b * sigma_b) * dt + sigma_b * np.sqrt(dt) * z_b)
+        if payoff_on == "max":
+            s_star = max(s_a, s_b)
+        else:
+            s_star = min(s_a, s_b)
+        if option_type.lower() in {"call", "c"}:
+            payoff = max(s_star - K, 0.0)
+        else:
+            payoff = max(K - s_star, 0.0)
+        payoff_list.append(payoff)
+    return float(disc * np.mean(payoff_list))
+
 def _barrier_closed_form_price(
     option_type: str,
     barrier_type: str,
@@ -3101,7 +3334,7 @@ else:
                 )
             ],
         )
-        st.plotly_chart(hist_fig, use_container_width=True)
+        st.plotly_chart(hist_fig, width="stretch")
     else:
         st.info("Pas d'historique disponible pour ce ticker.")
 
@@ -3109,6 +3342,368 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
     # Helper to avoid duplicate Streamlit keys across Call/Put tabs.
     def _k(base: str) -> str:
         return f"{base}_{option_label.lower()}"
+    # Helper for advanced structures, reused across dedicated tabs.
+    def _render_structure_panel(structure_name: str):
+        ks = structure_name.lower().replace(" ", "_").replace("/", "_").replace("-", "_")
+        def kk(suffix: str) -> str:
+            return _k(f"{ks}_{suffix}")
+
+        st.subheader(structure_name)
+        if structure_name == "Iron Condor":
+            render_method_explainer(
+                "🪂 Construction de l’iron condor",
+                (
+                    "- Quatre jambes européennes : long put bas, short put plus proche du spot, short call plus proche du spot, long call haut.\n"
+                    "- Prix obtenu en sommant les primes BSM (positions achetées > positif ; positions vendues > négatif).\n"
+                    "- Risque limité à l’écart entre ailes et jambes courtes, profit maximal égal au crédit net encaissé."
+                ),
+            )
+            wing_inner = st.number_input(
+                "Écart des strikes courts (autour de K commun)",
+                value=max(1.0, common_strike_value * 0.05),
+                min_value=0.1,
+                step=0.1,
+                key=kk("ic_wing_inner"),
+            )
+            wing_outer = st.number_input(
+                "Largeur des ailes (écart entre strike court et aile longue)",
+                value=max(1.0, common_strike_value * 0.05),
+                min_value=0.1,
+                step=0.1,
+                key=kk("ic_wing_outer"),
+            )
+            if st.button("Calculer l'Iron Condor (BSM)", key=kk("btn_iron_condor")):
+                K_mid = float(common_strike_value)
+                k_put_long = max(0.01, K_mid - (wing_inner + wing_outer))
+                k_put_short = max(0.01, K_mid - wing_inner)
+                k_call_short = K_mid + wing_inner
+                k_call_long = K_mid + wing_inner + wing_outer
+                try:
+                    premium_put_long = _vanilla_price_with_dividend("put", common_spot_value, k_put_long, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
+                    premium_put_short = _vanilla_price_with_dividend("put", common_spot_value, k_put_short, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
+                    premium_call_short = _vanilla_price_with_dividend("call", common_spot_value, k_call_short, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
+                    premium_call_long = _vanilla_price_with_dividend("call", common_spot_value, k_call_long, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
+                    net_premium = premium_put_long - premium_put_short - premium_call_short + premium_call_long
+                    credit = max(-net_premium, 0.0)
+                    width = float(wing_outer)
+                    max_profit = credit
+                    max_loss = max(0.0, width - credit)
+                    be_low = k_put_short - credit
+                    be_high = k_call_short + credit
+                    st.success(
+                        f"Prime nette (achat>+ / vente>−) = {net_premium:.6f} "
+                        f"{'(crédit)' if net_premium < 0 else '(débit)'}\n\n"
+                        f"Max profit ≈ {max_profit:.6f} | Max perte ≈ {max_loss:.6f}\n"
+                        f"Strikes : Put long {k_put_long:.2f} / Put short {k_put_short:.2f} / "
+                        f"Call short {k_call_short:.2f} / Call long {k_call_long:.2f}\n"
+                        f"Break-even bas ≈ {be_low:.4f} | Break-even haut ≈ {be_high:.4f}"
+                    )
+                except Exception as exc:
+                    st.error(f"Erreur lors du calcul Iron Condor : {exc}")
+            return
+
+        if structure_name == "Digital (cash-or-nothing)":
+            payout = st.number_input("Payout", value=1.0, min_value=0.0, step=0.1, key=kk("payout"))
+            if st.button("Pricer le digital", key=kk("btn")):
+                price = _digital_cash_or_nothing_price(
+                    option_type=option_char,
+                    S0=common_spot_value,
+                    K=common_strike_value,
+                    T=common_maturity_value,
+                    r=common_rate_value,
+                    dividend=float(d_common),
+                    sigma=common_sigma_value,
+                    payout=payout,
+                )
+                st.success(f"Prix digital ({option_label}) = {price:.6f}")
+            return
+
+        if structure_name == "Asset-or-nothing":
+            if st.button("Pricer l'asset-or-nothing", key=kk("btn")):
+                price = _asset_or_nothing_price(
+                    option_type=option_char,
+                    S0=common_spot_value,
+                    K=common_strike_value,
+                    T=common_maturity_value,
+                    r=common_rate_value,
+                    dividend=float(d_common),
+                    sigma=common_sigma_value,
+                )
+                st.success(f"Prix asset-or-nothing ({option_label}) = {price:.6f}")
+            return
+
+        if structure_name == "Forward-start option":
+            t_start = st.number_input("T start (années)", value=float(common_maturity_value * 0.25), min_value=0.0, max_value=float(common_maturity_value * 0.9), step=0.05, key=kk("t_start"))
+            k_fs = st.number_input("Facteur de strike (k)", value=1.0, min_value=0.1, step=0.05, key=kk("k"))
+            n_paths_fs = st.number_input("Trajectoires MC", value=5000, min_value=500, step=500, key=kk("paths"))
+            n_steps_fs = st.number_input("Pas de temps", value=200, min_value=20, step=10, key=kk("steps"))
+            if st.button("Pricer le forward-start", key=kk("btn")):
+                price = _forward_start_price_mc(
+                    S0=common_spot_value,
+                    r=common_rate_value,
+                    q=float(d_common),
+                    sigma=common_sigma_value,
+                    T_start=t_start,
+                    T_end=common_maturity_value,
+                    k=k_fs,
+                    n_paths=int(n_paths_fs),
+                    n_steps=int(n_steps_fs),
+                    option_type=option_char,
+                )
+                st.success(f"Prix forward-start ({option_label}) = {price:.6f}")
+            return
+
+        if structure_name == "Chooser option":
+            t_choice = st.number_input("Date de choix (années)", value=float(common_maturity_value * 0.5), min_value=0.0, max_value=float(max(0.01, common_maturity_value)), step=0.05, key=kk("t"))
+            if st.button("Pricer le chooser", key=kk("btn")):
+                price = _chooser_option_price(
+                    S0=common_spot_value,
+                    K=common_strike_value,
+                    T=common_maturity_value,
+                    t_choice=t_choice,
+                    r=common_rate_value,
+                    dividend=float(d_common),
+                    sigma=common_sigma_value,
+                )
+                st.success(f"Prix chooser = {price:.6f}")
+            return
+
+        if structure_name == "Straddle":
+            if st.button("Pricer le straddle", key=kk("btn")):
+                price = _vanilla_price_with_dividend("call", common_spot_value, common_strike_value, common_maturity_value, common_rate_value, float(d_common), common_sigma_value) + _vanilla_price_with_dividend("put", common_spot_value, common_strike_value, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
+                st.success(f"Prix straddle (K={common_strike_value:.2f}) = {price:.6f}")
+            return
+
+        if structure_name == "Strangle":
+            wing = st.number_input("Écart strike strangle", value=max(1.0, common_strike_value * 0.05), min_value=0.01, step=0.1, key=kk("wing"))
+            if st.button("Pricer le strangle", key=kk("btn")):
+                k_put = max(0.01, common_strike_value - wing)
+                k_call = common_strike_value + wing
+                price = _vanilla_price_with_dividend("put", common_spot_value, k_put, common_maturity_value, common_rate_value, float(d_common), common_sigma_value) + _vanilla_price_with_dividend("call", common_spot_value, k_call, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
+                st.success(f"Prix strangle (Put {k_put:.2f} / Call {k_call:.2f}) = {price:.6f}")
+            return
+
+        if structure_name == "Call spread":
+            width = st.number_input("Écart strikes (vertical call spread)", value=max(1.0, common_strike_value * 0.05), min_value=0.01, step=0.1, key=kk("width"))
+            if st.button("Pricer le call spread", key=kk("btn")):
+                k_long = common_strike_value
+                k_short = common_strike_value + width
+                price = _vanilla_price_with_dividend("call", common_spot_value, k_long, common_maturity_value, common_rate_value, float(d_common), common_sigma_value) - _vanilla_price_with_dividend("call", common_spot_value, k_short, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
+                st.success(f"Prix call spread (long {k_long:.2f}, short {k_short:.2f}) = {price:.6f}")
+            return
+
+        if structure_name == "Put spread":
+            width = st.number_input("Écart strikes (vertical put spread)", value=max(1.0, common_strike_value * 0.05), min_value=0.01, step=0.1, key=kk("width"))
+            if st.button("Pricer le put spread", key=kk("btn")):
+                k_short = max(0.01, common_strike_value - width)
+                k_long = common_strike_value
+                price = _vanilla_price_with_dividend("put", common_spot_value, k_long, common_maturity_value, common_rate_value, float(d_common), common_sigma_value) - _vanilla_price_with_dividend("put", common_spot_value, k_short, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
+                st.success(f"Prix put spread (long {k_long:.2f}, short {k_short:.2f}) = {price:.6f}")
+            return
+
+        if structure_name == "Butterfly":
+            wing = st.number_input("Largeur des ailes (butterfly)", value=max(1.0, common_strike_value * 0.05), min_value=0.01, step=0.1, key=kk("wing"))
+            if st.button("Pricer le butterfly", key=kk("btn")):
+                k1 = max(0.01, common_strike_value - wing)
+                k2 = common_strike_value
+                k3 = common_strike_value + wing
+                price = (
+                    _vanilla_price_with_dividend("call", common_spot_value, k1, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
+                    - 2 * _vanilla_price_with_dividend("call", common_spot_value, k2, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
+                    + _vanilla_price_with_dividend("call", common_spot_value, k3, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
+                )
+                st.success(f"Prix butterfly (K1={k1:.2f}, K2={k2:.2f}, K3={k3:.2f}) = {price:.6f}")
+            return
+
+        if structure_name == "Condor":
+            wing_inner = st.number_input("Écart strikes intérieurs", value=max(1.0, common_strike_value * 0.03), min_value=0.01, step=0.1, key=kk("inner"))
+            wing_outer = st.number_input("Largeur d'aile condor", value=max(1.0, common_strike_value * 0.06), min_value=0.01, step=0.1, key=kk("outer"))
+            if st.button("Pricer le condor", key=kk("btn")):
+                K1 = max(0.01, common_strike_value - (wing_inner + wing_outer))
+                K2 = max(0.01, common_strike_value - wing_inner)
+                K3 = common_strike_value + wing_inner
+                K4 = common_strike_value + wing_inner + wing_outer
+                price = (
+                    _vanilla_price_with_dividend("call", common_spot_value, K1, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
+                    - _vanilla_price_with_dividend("call", common_spot_value, K2, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
+                    - _vanilla_price_with_dividend("call", common_spot_value, K3, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
+                    + _vanilla_price_with_dividend("call", common_spot_value, K4, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
+                )
+                st.success(f"Prix condor (K1={K1:.2f}, K2={K2:.2f}, K3={K3:.2f}, K4={K4:.2f}) = {price:.6f}")
+            return
+
+        if structure_name == "Iron Butterfly":
+            wing = st.number_input("Largeur des ailes (iron fly)", value=max(1.0, common_strike_value * 0.05), min_value=0.01, step=0.1, key=kk("wing"))
+            if st.button("Pricer l'iron butterfly", key=kk("btn")):
+                K_mid = common_strike_value
+                K_low = max(0.01, K_mid - wing)
+                K_high = K_mid + wing
+                price = (
+                    _vanilla_price_with_dividend("put", common_spot_value, K_low, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
+                    - _vanilla_price_with_dividend("put", common_spot_value, K_mid, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
+                    - _vanilla_price_with_dividend("call", common_spot_value, K_mid, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
+                    + _vanilla_price_with_dividend("call", common_spot_value, K_high, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
+                )
+                st.success(f"Prix iron butterfly (K={K_low:.2f}/{K_mid:.2f}/{K_high:.2f}) = {price:.6f}")
+            return
+
+        if structure_name == "Calendar spread":
+            T_short = st.number_input("Maturité courte", value=float(max(0.1, common_maturity_value * 0.5)), min_value=0.01, key=kk("t_short"))
+            T_long = st.number_input("Maturité longue", value=float(common_maturity_value), min_value=T_short + 0.01, key=kk("t_long"))
+            opt_kind = st.selectbox("Type", ["call", "put"], key=kk("type"))
+            if st.button("Pricer le calendar", key=kk("btn")):
+                long_leg = _vanilla_price_with_dividend(opt_kind, common_spot_value, common_strike_value, T_long, common_rate_value, float(d_common), common_sigma_value)
+                short_leg = _vanilla_price_with_dividend(opt_kind, common_spot_value, common_strike_value, T_short, common_rate_value, float(d_common), common_sigma_value)
+                st.success(f"Prix calendar ({opt_kind}) = {long_leg - short_leg:.6f}")
+            return
+
+        if structure_name == "Diagonal spread":
+            T_short = st.number_input("Maturité courte", value=float(max(0.1, common_maturity_value * 0.5)), min_value=0.01, key=kk("t_short"))
+            T_long = st.number_input("Maturité longue", value=float(common_maturity_value), min_value=T_short + 0.01, key=kk("t_long"))
+            k_short = st.number_input("Strike court", value=float(common_strike_value), min_value=0.01, key=kk("k_short"))
+            k_long = st.number_input("Strike long", value=float(common_strike_value * 1.05), min_value=0.01, key=kk("k_long"))
+            opt_kind = st.selectbox("Type", ["call", "put"], key=kk("type"))
+            if st.button("Pricer le diagonal", key=kk("btn")):
+                long_leg = _vanilla_price_with_dividend(opt_kind, common_spot_value, k_long, T_long, common_rate_value, float(d_common), common_sigma_value)
+                short_leg = _vanilla_price_with_dividend(opt_kind, common_spot_value, k_short, T_short, common_rate_value, float(d_common), common_sigma_value)
+                st.success(f"Prix diagonal ({opt_kind}) = {long_leg - short_leg:.6f}")
+            return
+
+        if structure_name == "Binary barrier (digital)":
+            barrier_type = st.selectbox("Barrière", ["up", "down"], key=kk("barrier_type"))
+            direction = st.selectbox("Knock", ["out", "in"], key=kk("direction"))
+            payout = st.number_input("Payout", value=1.0, min_value=0.0, step=0.1, key=kk("payout"))
+            base_level = common_spot_value * (1.1 if barrier_type == "up" else 0.9)
+            barrier_level = st.number_input("Niveau barrière", value=float(base_level), min_value=0.0001, key=kk("level"))
+            n_paths_bb = st.number_input("Trajectoires MC", value=5000, min_value=500, step=500, key=kk("paths"))
+            n_steps_bb = st.number_input("Pas de temps", value=200, min_value=20, step=10, key=kk("steps"))
+            if st.button("Pricer la binary barrière", key=kk("btn")):
+                price = _binary_barrier_mc(
+                    option_type=option_char,
+                    barrier_type=barrier_type,
+                    direction=direction,
+                    S0=common_spot_value,
+                    K=common_strike_value,
+                    barrier=barrier_level,
+                    T=common_maturity_value,
+                    r=common_rate_value,
+                    dividend=float(d_common),
+                    sigma=common_sigma_value,
+                    payout=payout,
+                    n_paths=int(n_paths_bb),
+                    n_steps=int(n_steps_bb),
+                )
+                st.success(f"Prix binary barrière = {price:.6f}")
+            return
+
+        if structure_name == "Asian géométrique":
+            n_obs_geo = st.number_input("Observations", value=12, min_value=1, step=1, key=kk("obs"))
+            if st.button("Pricer l'asian géométrique", key=kk("btn")):
+                price = asian_geometric_closed_form(
+                    spot=common_spot_value,
+                    strike=common_strike_value,
+                    rate=common_rate_value,
+                    sigma=common_sigma_value,
+                    maturity=common_maturity_value,
+                    n_obs=int(n_obs_geo),
+                    option_type="call" if option_char == "c" else "put",
+                )
+                st.success(f"Prix asian géométrique ({option_label}) = {price:.6f}")
+            return
+
+        if structure_name == "Lookback fixed (MC)":
+            n_paths_lb = st.number_input("Trajectoires MC", value=5000, min_value=500, step=500, key=kk("paths"))
+            n_steps_lb = st.number_input("Pas de temps", value=200, min_value=10, step=10, key=kk("steps"))
+            if st.button("Pricer le lookback fixed", key=kk("btn")):
+                dt = common_maturity_value / n_steps_lb
+                drift = (common_rate_value - float(d_common) - 0.5 * common_sigma_value**2) * dt
+                diff = common_sigma_value * math.sqrt(dt)
+                disc = math.exp(-common_rate_value * common_maturity_value)
+                payoffs = []
+                for _ in range(int(n_paths_lb)):
+                    s = common_spot_value
+                    s_max = s_min = s
+                    for _ in range(int(n_steps_lb)):
+                        z = np.random.normal()
+                        s *= math.exp(drift + diff * z)
+                        s_max = max(s_max, s)
+                        s_min = min(s_min, s)
+                    if option_char == "c":
+                        payoff = max(s_max - common_strike_value, 0.0)
+                    else:
+                        payoff = max(common_strike_value - s_min, 0.0)
+                    payoffs.append(payoff)
+                price = disc * float(np.mean(payoffs)) if payoffs else 0.0
+                st.success(f"Prix lookback fixed ({option_label}) = {price:.6f}")
+            return
+
+        if structure_name == "Cliquet / Ratchet (MC)":
+            n_periods = st.number_input("Nombre de périodes", value=12, min_value=1, step=1, key=kk("periods"))
+            cap = st.number_input("Cap par période", value=0.05, min_value=-1.0, step=0.01, key=kk("cap"))
+            floor = st.number_input("Floor par période", value=0.0, min_value=-1.0, step=0.01, key=kk("floor"))
+            n_paths_cliq = st.number_input("Trajectoires MC", value=3000, min_value=500, step=500, key=kk("paths"))
+            if st.button("Pricer le cliquet/ratchet", key=kk("btn")):
+                price = _cliquet_mc(
+                    S0=common_spot_value,
+                    r=common_rate_value,
+                    q=float(d_common),
+                    sigma=common_sigma_value,
+                    T=common_maturity_value,
+                    n_periods=int(n_periods),
+                    cap=float(cap),
+                    floor=float(floor),
+                    n_paths=int(n_paths_cliq),
+                )
+                st.success(f"Prix cliquet/ratchet ≈ {price:.6f}")
+            return
+
+        if structure_name == "Quanto option":
+            sigma_fx = st.number_input("Vol FX", value=0.1, min_value=0.0, step=0.01, key=kk("sigma_fx"))
+            rho_qt = st.number_input("Corrélation S/FX", value=0.0, min_value=-1.0, max_value=1.0, step=0.05, key=kk("rho"))
+            opt_kind = st.selectbox("Type", ["call", "put"], key=kk("type"))
+            if st.button("Pricer la quanto", key=kk("btn")):
+                price = _quanto_vanilla_price(
+                    option_type=opt_kind,
+                    S0=common_spot_value,
+                    K=common_strike_value,
+                    T=common_maturity_value,
+                    r_dom=common_rate_value,
+                    q_for=float(d_common),
+                    sigma_asset=common_sigma_value,
+                    sigma_fx=sigma_fx,
+                    rho=rho_qt,
+                )
+                st.success(f"Prix quanto ({opt_kind}) = {price:.6f}")
+            return
+
+        if structure_name == "Rainbow option":
+            S0_b = st.number_input("Spot actif B", value=float(common_spot_value), min_value=0.01, key=kk("S0b"))
+            sigma_b = st.number_input("Vol B", value=float(common_sigma_value), min_value=0.0001, key=kk("sigb"))
+            rho_ab = st.number_input("Corrélation A/B", value=0.2, min_value=-1.0, max_value=1.0, step=0.05, key=kk("rho"))
+            payoff_on = st.selectbox("Sous-jacent du payoff", ["max", "min"], key=kk("payoff"))
+            opt_kind = st.selectbox("Type", ["call", "put"], key=kk("type"))
+            n_paths_r = st.number_input("Trajectoires MC", value=4000, min_value=500, step=500, key=kk("paths"))
+            n_steps_r = st.number_input("Pas de temps", value=150, min_value=10, step=10, key=kk("steps"))
+            if st.button("Pricer le rainbow", key=kk("btn")):
+                price = _rainbow_two_asset_mc(
+                    payoff_on=payoff_on,
+                    S0_a=common_spot_value,
+                    S0_b=S0_b,
+                    sigma_a=common_sigma_value,
+                    sigma_b=sigma_b,
+                    rho=rho_ab,
+                    K=common_strike_value,
+                    T=common_maturity_value,
+                    r=common_rate_value,
+                    q_a=float(d_common),
+                    q_b=float(d_common),
+                    n_paths=int(n_paths_r),
+                    n_steps=int(n_steps_r),
+                    option_type=opt_kind,
+                )
+                st.success(f"Prix rainbow ({payoff_on}) = {price:.6f}")
+            return
+
     # Helper to render the relevant heatmap for the current Call/Put tab.
     def _render_heatmaps_for_current_option(label: str, call_matrix, put_matrix, x_vals, y_vals):
         if option_char == "c":
@@ -3134,14 +3729,42 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
         # Put via parité call-put
         return float(call_price - S0 * math.exp(-q * T) + K * math.exp(-r * T))
     (
-        tab_european,
-        tab_american,
-        tab_lookback,
-        tab_barrier,
-        tab_bermudan,
-        tab_basket,
-        tab_asian,
-    ) = st.tabs(["Européenne", "Américaine", "Lookback", "Barrière", "Bermuda", "Basket", "Asian"])
+        tab_grp_vanilla,
+        tab_grp_path,
+        tab_grp_barrier,
+        tab_grp_spreads,
+        tab_grp_calendar,
+        tab_grp_exotics,
+        tab_grp_basket,
+    ) = st.tabs(
+        [
+            "Vanilla / Early exercise",
+            "Path-dependent",
+            "Barrières",
+            "Spreads & Wings",
+            "Calendriers",
+            "Exotiques",
+            "Basket",
+        ]
+    )
+
+    tab_european = tab_american = tab_bermudan = tab_grp_vanilla
+
+    tab_asian = tab_lookback = tab_asian_geo = tab_lookback_fixed = tab_grp_path
+    tab_forward_start = tab_cliquet = tab_grp_path
+
+    tab_barrier = tab_binary_barrier = tab_grp_barrier
+
+    tab_straddle = tab_strangle = tab_call_spread = tab_put_spread = tab_grp_spreads
+    tab_butterfly = tab_condor = tab_iron_condor = tab_iron_bfly = tab_grp_spreads
+
+    tab_calendar = tab_diagonal = tab_grp_calendar
+
+    tab_digital = tab_asset_on = tab_chooser = tab_quanto = tab_rainbow = tab_grp_exotics
+    tab_forward_start = tab_forward_start
+    tab_cliquet = tab_cliquet
+
+    tab_basket = tab_grp_basket
     
     
     with tab_european:
@@ -4305,6 +4928,66 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
             key_prefix=_k("asian"),
             option_char=option_char,
         )
+
+    with tab_iron_condor:
+        _render_structure_panel("Iron Condor")
+
+    with tab_digital:
+        _render_structure_panel("Digital (cash-or-nothing)")
+
+    with tab_asset_on:
+        _render_structure_panel("Asset-or-nothing")
+
+    with tab_forward_start:
+        _render_structure_panel("Forward-start option")
+
+    with tab_chooser:
+        _render_structure_panel("Chooser option")
+
+    with tab_straddle:
+        _render_structure_panel("Straddle")
+
+    with tab_strangle:
+        _render_structure_panel("Strangle")
+
+    with tab_call_spread:
+        _render_structure_panel("Call spread")
+
+    with tab_put_spread:
+        _render_structure_panel("Put spread")
+
+    with tab_butterfly:
+        _render_structure_panel("Butterfly")
+
+    with tab_condor:
+        _render_structure_panel("Condor")
+
+    with tab_iron_bfly:
+        _render_structure_panel("Iron Butterfly")
+
+    with tab_calendar:
+        _render_structure_panel("Calendar spread")
+
+    with tab_diagonal:
+        _render_structure_panel("Diagonal spread")
+
+    with tab_binary_barrier:
+        _render_structure_panel("Binary barrier (digital)")
+
+    with tab_asian_geo:
+        _render_structure_panel("Asian géométrique")
+
+    with tab_lookback_fixed:
+        _render_structure_panel("Lookback fixed (MC)")
+
+    with tab_cliquet:
+        _render_structure_panel("Cliquet / Ratchet (MC)")
+
+    with tab_quanto:
+        _render_structure_panel("Quanto option")
+
+    with tab_rainbow:
+        _render_structure_panel("Rainbow option")
 
 tab_call, tab_put = st.tabs(["Call", "Put"])
 for _label, _tab in (("Call", tab_call), ("Put", tab_put)):
