@@ -741,6 +741,51 @@ def _barrier_monte_carlo_price(
     return discount * (float(np.mean(payoffs)) if payoffs else 0.0)
 
 
+def _render_barrier_stock_paths(
+    S0: float,
+    T: float,
+    r: float,
+    dividend: float,
+    sigma: float,
+    barrier: float,
+    barrier_type: str,
+    n_steps: int,
+    title_suffix: str,
+):
+    """Display a few GBM trajectories with the active barrier level overlaid."""
+    n_steps = max(5, int(n_steps))
+    dt = T / n_steps if n_steps > 0 else T
+    times = np.linspace(0.0, T, n_steps + 1)
+    n_paths_plot = 5
+    paths = np.empty((n_paths_plot, n_steps + 1))
+
+    drift = (r - dividend - 0.5 * sigma * sigma) * dt
+    vol_step = sigma * np.sqrt(dt)
+
+    for i in range(n_paths_plot):
+        shocks = np.random.normal(size=n_steps)
+        log_path = np.empty(n_steps + 1)
+        log_path[0] = np.log(S0)
+        log_path[1:] = log_path[0] + np.cumsum(drift + vol_step * shocks)
+        paths[i] = np.exp(log_path)
+
+    fig, ax = plt.subplots(figsize=(7, 3))
+    for i in range(n_paths_plot):
+        ax.plot(times, paths[i], alpha=0.65, linewidth=1.4)
+
+    is_up = barrier_type == "up"
+    color = "crimson" if is_up else "steelblue"
+    label = "Barrière haute" if is_up else "Barrière basse"
+    ax.axhline(barrier, color=color, linestyle="--", linewidth=2.0, label=f"{label} = {barrier:.2f}")
+    ax.set_xlabel("Temps (années)")
+    ax.set_ylabel("Sous-jacent simulé")
+    ax.set_title(f"Trajectoires simulées + barrière ({title_suffix})")
+    ax.grid(True, linestyle="--", alpha=0.35)
+    ax.legend()
+    st.pyplot(fig)
+    plt.close(fig)
+
+
 def _compute_barrier_heatmap_matrix(
     option_type: str,
     barrier_type: str,
@@ -1947,6 +1992,7 @@ def ui_asian_options(
     strike_common,
     rate_common,
     key_prefix: str = "asian",
+    option_char: str = "c",
 ):
     # Prefix keys to avoid clashes when the module is rendered in multiple tabs.
     def _k(suffix: str) -> str:
@@ -2041,127 +2087,70 @@ def ui_asian_options(
     )
 
     st.subheader("Heatmaps prix asiatiques (K vs T)")
+    k_center = st.session_state.get("common_strike", strike_common)
+    k_span = float(st.session_state.get("heatmap_span_value", 25.0))
+    k_min = max(0.01, k_center - k_span)
+    k_max = k_center + k_span
     col_k, col_t = st.columns(2)
     with col_k:
-        k_center = st.session_state.get("common_strike", strike_common)
-        default_k_min = st.session_state.get(_k("k_min"), max(0.01, k_center - 40.0))
-        default_k_max = st.session_state.get(_k("k_max"), k_center + 40.0)
-        k_min = st.number_input(
-            "K min",
-            value=float(default_k_min),
-            min_value=0.01,
-            step=1.0,
-            key=_k("k_min"),
-            help="Borne inférieure de la plage de strikes pour les options asiatiques.",
-        )
-        k_max = st.number_input(
-            "K max",
-            value=float(default_k_max),
-            min_value=k_min + 1.0,
-            step=1.0,
-            key=_k("k_max"),
-            help="Borne supérieure de la plage de strikes pour les options asiatiques.",
-        )
-        st.caption(f"Domaine K: [{k_min:.2f}, {k_max:.2f}]")
+        st.caption(f"Domaine K commun (span): [{k_min:.2f}, {k_max:.2f}]")
     with col_t:
         t_center = st.session_state.get("common_maturity", maturity_common)
-        default_t_min = st.session_state.get(_k("t_min"), max(0.05, t_center / 2.0))
-        default_t_max = st.session_state.get(_k("t_max"), t_center * 2.0)
-        t_min = st.number_input(
-            "T min (années)",
-            value=float(default_t_min),
-            min_value=0.01,
-            step=0.05,
-            key=_k("t_min"),
-            help="Maturité minimale de la surface asiatique (en années).",
-        )
-        t_max = st.number_input(
-            "T max (années)",
-            value=float(default_t_max),
-            min_value=t_min + 0.01,
-            step=0.05,
-            key=_k("t_max"),
-            help="Maturité maximale de la surface asiatique (en années).",
-        )
-        st.caption(f"Domaine T: [{t_min:.2f}, {t_max:.2f}]")
+        t_span = float(st.session_state.get("heatmap_maturity_span_value", max(0.05, t_center * 0.5)))
+        t_min = max(0.01, t_center - t_span)
+        t_max = t_center + t_span
+        st.caption(f"Domaine T commun (span): [{t_min:.2f}, {t_max:.2f}]")
 
     n_k = st.slider("Résolution en K", 10, 40, 20, 2, key=_k("n_k"))
     n_t = st.slider("Résolution en T", 10, 40, 20, 2, key=_k("n_t"))
     n_paths_surface = st.slider("Nombre de trajectoires Monte Carlo", 5_000, 50_000, 20_000, 5_000, key=_k("n_paths"))
 
-    k_vals = np.linspace(k_min, k_max, n_k)
-    t_vals = np.linspace(t_min, t_max, n_t)
+    is_call_tab = option_char.lower() == "c"
+    heatmap_label = "Call" if is_call_tab else "Put"
+    with st.expander(f"Afficher la heatmap {heatmap_label}", expanded=False):
+        k_vals = np.linspace(k_min, k_max, n_k)
+        t_vals = np.linspace(t_min, t_max, n_t)
+        prices = np.zeros((n_t, n_k), dtype=float)
 
-    prices_call = np.zeros((n_t, n_k), dtype=float)
-    prices_put = np.zeros((n_t, n_k), dtype=float)
+        with st.spinner("Calcul de la surface de prix (MC asiatique)…"):
+            progress_surface = st.progress(0)
+            total_iters = len(t_vals) * len(k_vals)
+            done = 0
+            for i_t, t_val in enumerate(t_vals):
+                n_obs = max(2, int(50 * t_val))
+                for i_k, k_val in enumerate(k_vals):
+                    price_val, _, _ = asian_mc_control_variate(
+                        spot=float(spot_common),
+                        strike=float(k_val),
+                        rate=float(rate_common),
+                        sigma=float(sigma),
+                        maturity=float(t_val),
+                        n_obs=int(n_obs),
+                        n_paths=int(n_paths_surface),
+                        option_type="call" if is_call_tab else "put",
+                        antithetic=True,
+                        seed=None,
+                    )
+                    prices[i_t, i_k] = price_val
+                    done += 1
+                    if total_iters > 0:
+                        progress_surface.progress(int((done / total_iters) * 100))
+            progress_surface.empty()
 
-    with st.spinner("Calcul des surfaces de prix (MC asiatique)…"):
-        progress_surface = st.progress(0)
-        total_iters = len(t_vals) * len(k_vals)
-        done = 0
-        for i_t, t_val in enumerate(t_vals):
-            n_obs = max(2, int(50 * t_val))
-            for i_k, k_val in enumerate(k_vals):
-                call_price, _, _ = asian_mc_control_variate(
-                    spot=float(spot_common),
-                    strike=float(k_val),
-                    rate=float(rate_common),
-                    sigma=float(sigma),
-                    maturity=float(t_val),
-                    n_obs=int(n_obs),
-                    n_paths=int(n_paths_surface),
-                    option_type="call",
-                    antithetic=True,
-                    seed=None,
-                )
-                put_price, _, _ = asian_mc_control_variate(
-                    spot=float(spot_common),
-                    strike=float(k_val),
-                    rate=float(rate_common),
-                    sigma=float(sigma),
-                    maturity=float(t_val),
-                    n_obs=int(n_obs),
-                    n_paths=int(n_paths_surface),
-                    option_type="put",
-                    antithetic=True,
-                    seed=None,
-                )
-                prices_call[i_t, i_k] = call_price
-                prices_put[i_t, i_k] = put_price
-                done += 1
-                if total_iters > 0:
-                    progress_surface.progress(int((done / total_iters) * 100))
-        progress_surface.empty()
-
-    fig_call, ax_call = plt.subplots(figsize=(7, 4))
-    im0 = ax_call.imshow(
-        prices_call,
-        origin="lower",
-        extent=[k_vals.min(), k_vals.max(), t_vals.min(), t_vals.max()],
-        aspect="auto",
-        cmap="viridis",
-    )
-    ax_call.set_xlabel("Strike K")
-    ax_call.set_ylabel("Maturité T (années)")
-    ax_call.set_title("Call asiatique arithmétique (MC + control variate)")
-    fig_call.colorbar(im0, ax=ax_call, label="Prix")
-    fig_call.tight_layout()
-    st.pyplot(fig_call)
-
-    fig_put, ax_put = plt.subplots(figsize=(7, 4))
-    im1 = ax_put.imshow(
-        prices_put,
-        origin="lower",
-        extent=[k_vals.min(), k_vals.max(), t_vals.min(), t_vals.max()],
-        aspect="auto",
-        cmap="viridis",
-    )
-    ax_put.set_xlabel("Strike K")
-    ax_put.set_ylabel("Maturité T (années)")
-    ax_put.set_title("Put asiatique arithmétique (MC + control variate)")
-    fig_put.colorbar(im1, ax=ax_put, label="Prix")
-    fig_put.tight_layout()
-    st.pyplot(fig_put)
+        fig, ax = plt.subplots(figsize=(7, 4))
+        im = ax.imshow(
+            prices,
+            origin="lower",
+            extent=[k_vals.min(), k_vals.max(), t_vals.min(), t_vals.max()],
+            aspect="auto",
+            cmap="viridis",
+        )
+        ax.set_xlabel("Strike K")
+        ax.set_ylabel("Maturité T (années)")
+        ax.set_title(f"{heatmap_label} asiatique arithmétique (MC + control variate)")
+        fig.colorbar(im, ax=ax, label="Prix")
+        fig.tight_layout()
+        st.pyplot(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -3020,7 +3009,8 @@ st.session_state["heston_v0_common"] = heston_v0_common
 
 heatmap_spot_values = _heatmap_axis(S0_common, heatmap_span)
 heatmap_strike_values = _heatmap_axis(K_common, heatmap_span)
-heatmap_maturity_values = _heatmap_axis(T_common, T_common * 0.5)
+heatmap_maturity_span = float(max(0.01, T_common * 0.5))
+heatmap_maturity_values = _heatmap_axis(T_common, heatmap_maturity_span)
 
 common_spot_value = float(S0_common)
 common_maturity_value = float(T_common)
@@ -3035,6 +3025,7 @@ st.session_state["common_sigma"] = common_sigma_value
 st.session_state["common_rate"] = common_rate_value
 st.session_state["common_dividend"] = float(d_common)
 st.session_state["heatmap_span_value"] = float(heatmap_span)
+st.session_state["heatmap_maturity_span_value"] = float(heatmap_maturity_span)
 
 st.markdown("---")
 st.subheader("Historique 1 an du ticker (prix de clôture)")
@@ -3852,11 +3843,14 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
             cpflag_barrier_up = option_label
             cpflag_barrier_up_char = option_char
             st.caption("Type fixé par l’onglet Call / Put en haut de page.")
-            Hu_up = st.number_input(
+            Hu_up = st.slider(
                 "Barrière haute Hu",
-                value=max(110.0, S0_common * 1.1),
-                min_value=S0_common,
+                min_value=float(max(S0_common * 1.0, 0.01)),
+                max_value=float(max(S0_common * 3.0, S0_common + 1.0)),
+                value=float(max(110.0, S0_common * 1.1)),
+                step=float(max(S0_common * 0.01, 0.1)),
                 key=_k("Hu_up"),
+                help="Curseur pour fixer la barrière haute du scénario Up.",
             )
             n_paths_up = st.number_input(
                 "Trajectoires Monte Carlo",
@@ -3872,6 +3866,19 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                 min_value=10,
                 key=_k("n_steps_barrier_up"),
                 help="Nombre de pas de temps pour suivre le franchissement de la barrière.",
+            )
+
+            st.caption("Graphique des stocks avec barrière haute (onglet Up).")
+            _render_barrier_stock_paths(
+                S0=S0_common,
+                T=T_common,
+                r=r_common,
+                dividend=d_common,
+                sigma=sigma_common,
+                barrier=Hu_up,
+                barrier_type="up",
+                n_steps=n_steps_up,
+                title_suffix="Up-and-out / Up-and-in",
             )
 
             if st.button("Calculer (Up-and-out)", key=_k("btn_barrier_up")):
@@ -3926,12 +3933,14 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
             cpflag_barrier_down = option_label
             cpflag_barrier_down_char = option_char
             st.caption("Type fixé par l’onglet Call / Put en haut de page.")
-            Hd_down = st.number_input(
+            Hd_down = st.slider(
                 "Barrière basse Hd",
-                value=max(1.0, S0_common * 0.8),
-                min_value=0.0001,
+                min_value=float(max(0.01, S0_common * 0.2)),
+                max_value=float(max(S0_common * 0.99, 0.1)),
+                value=float(max(1.0, S0_common * 0.8)),
+                step=float(max(S0_common * 0.01, 0.05)),
                 key=_k("Hd_down"),
-                help="Niveau de barrière basse en dessous du spot.",
+                help="Curseur pour régler la barrière basse du scénario Down.",
             )
             n_paths_down = st.number_input(
                 "Trajectoires Monte Carlo",
@@ -3947,6 +3956,19 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                 min_value=10,
                 key=_k("n_steps_barrier_down"),
                 help="Nombre de pas de temps pour suivre la barrière.",
+            )
+
+            st.caption("Graphique des stocks avec barrière basse (onglet Down).")
+            _render_barrier_stock_paths(
+                S0=S0_common,
+                T=T_common,
+                r=r_common,
+                dividend=d_common,
+                sigma=sigma_common,
+                barrier=Hd_down,
+                barrier_type="down",
+                n_steps=n_steps_down,
+                title_suffix="Down-and-out / Down-and-in",
             )
 
             if st.button("Calculer (Down-and-out)", key=_k("btn_barrier_down")):
@@ -4004,12 +4026,14 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
             cpflag_barrier_up_in = option_label
             cpflag_barrier_up_in_char = option_char
             st.caption("Type fixé par l’onglet Call / Put en haut de page.")
-            Hu_up_in = st.number_input(
+            Hu_up_in = st.slider(
                 "Barrière haute Hu (Up-in)",
-                value=max(110.0, S0_common * 1.1),
-                min_value=S0_common,
+                min_value=float(max(S0_common * 1.0, 0.01)),
+                max_value=float(max(S0_common * 3.0, S0_common + 1.0)),
+                value=float(max(110.0, S0_common * 1.1)),
+                step=float(max(S0_common * 0.01, 0.1)),
                 key=_k("Hu_up_in"),
-                help="Niveau de barrière haute activant l’option Up-and-in.",
+                help="Curseur pour positionner la barrière haute du scénario Up-in.",
             )
             n_paths_up_in = st.number_input(
                 "Trajectoires Monte Carlo (Up-in)",
@@ -4025,6 +4049,19 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                 min_value=10,
                 key=_k("n_steps_barrier_up_in"),
                 help="Nombre de pas de temps par trajectoire pour l’Up-and-in.",
+            )
+
+            st.caption("Graphique des stocks avec barrière haute (Up-in).")
+            _render_barrier_stock_paths(
+                S0=S0_common,
+                T=T_common,
+                r=r_common,
+                dividend=d_common,
+                sigma=sigma_common,
+                barrier=Hu_up_in,
+                barrier_type="up",
+                n_steps=n_steps_up_in,
+                title_suffix="Up-and-in",
             )
 
             if st.button("Calculer (Up-and-in)", key=_k("btn_barrier_up_in")):
@@ -4080,11 +4117,14 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
             cpflag_barrier_down_in = option_label
             cpflag_barrier_down_in_char = option_char
             st.caption("Type fixé par l’onglet Call / Put en haut de page.")
-            Hd_down_in = st.number_input(
+            Hd_down_in = st.slider(
                 "Barrière basse Hd (Down-in)",
-                value=max(1.0, S0_common * 0.8),
-                min_value=0.0001,
+                min_value=float(max(0.01, S0_common * 0.2)),
+                max_value=float(max(S0_common * 0.99, 0.1)),
+                value=float(max(1.0, S0_common * 0.8)),
+                step=float(max(S0_common * 0.01, 0.05)),
                 key=_k("Hd_down_in"),
+                help="Curseur pour fixer la barrière basse pour l’Up/Down-in.",
             )
             n_paths_down_in = st.number_input(
                 "Trajectoires Monte Carlo (Down-in)",
@@ -4098,6 +4138,19 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                 value=200,
                 min_value=10,
                 key=_k("n_steps_barrier_down_in"),
+            )
+
+            st.caption("Graphique des stocks avec barrière basse (Down-in).")
+            _render_barrier_stock_paths(
+                S0=S0_common,
+                T=T_common,
+                r=r_common,
+                dividend=d_common,
+                sigma=sigma_common,
+                barrier=Hd_down_in,
+                barrier_type="down",
+                n_steps=n_steps_down_in,
+                title_suffix="Down-and-in",
             )
 
             if st.button("Calculer (Down-and-in)", key=_k("btn_barrier_down_in")):
@@ -4138,10 +4191,12 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
         cpflag_bmd = option_label
         cpflag_bmd_char = option_char
         st.caption("Type fixé par l’onglet Call / Put en haut de page.")
-        n_ex_dates_bmd = st.number_input(
+        n_ex_dates_bmd = st.slider(
             "Nombre de dates d'exercice Bermude",
-            value=6,
             min_value=2,
+            max_value=30,
+            value=6,
+            step=1,
             help="Les dates sont réparties uniformément sur la grille PDE (incluant l'échéance).",
             key=_k("n_ex_dates_bmd"),
         )
@@ -4248,6 +4303,7 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
             strike_common=common_strike_value,
             rate_common=common_rate_value,
             key_prefix=_k("asian"),
+            option_char=option_char,
         )
 
 tab_call, tab_put = st.tabs(["Call", "Put"])
