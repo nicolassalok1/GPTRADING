@@ -4,3 +4,4 @@ alpaca-trade-api
 python-dotenv
 pandas
 requests
+torch
