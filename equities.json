@@ -16,5 +16,18 @@
     },
     "drawdown": 0.001,
     "status": "On"
+  },
+  "BTC": {
+    "position": 0,
+    "entry_price": 37.605,
+    "levels": {
+      "1": 37.23,
+      "2": 36.85,
+      "3": 36.48,
+      "4": 36.1,
+      "5": 35.72
+    },
+    "drawdown": 0.01,
+    "status": "On"
   }
 }

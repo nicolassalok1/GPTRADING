@@ -1,8 +1,9 @@
 {
   "BTC": {
-    "quantity": 5,
-    "avg_price": 40.635,
-    "last_updated": "2025-11-18 14:11:04"
+    "quantity": 95,
+    "avg_price": 37.28,
+    "side": "short",
+    "last_updated": "2025-11-21 15:15:30"
   },
   "AAPL": {
     "quantity": 8,

@@ -10,6 +10,7 @@ import pandas as pd
 # Configuration
 DATA_FILE = "equities.json"
 PORTFOLIO_FILE = "portfolio.json"
+SELL_SYSTEMS_FILE = "sell_systems.json"
 load_dotenv()
 
 # Alpaca API Setup
@@ -87,39 +88,174 @@ def save_portfolio(portfolio):
     with open(PORTFOLIO_FILE, 'w') as f:
         json.dump(portfolio, f, indent=2)
 
+
+def load_sell_systems():
+    try:
+        with open(SELL_SYSTEMS_FILE, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def save_sell_systems(sell_systems):
+    with open(SELL_SYSTEMS_FILE, 'w') as f:
+        json.dump(sell_systems, f, indent=2)
+
 def buy_asset(symbol, quantity, price):
     portfolio = load_portfolio()
-    if symbol in portfolio:
-        old_qty = portfolio[symbol]['quantity']
-        old_avg = portfolio[symbol]['avg_price']
-        new_qty = old_qty + quantity
-        new_avg = ((old_qty * old_avg) + (quantity * price)) / new_qty
-        portfolio[symbol] = {
-            'quantity': new_qty,
-            'avg_price': round(new_avg, 2),
-            'last_updated': time.strftime('%Y-%m-%d %H:%M:%S')
-        }
+    now = time.strftime('%Y-%m-%d %H:%M:%S')
+
+    position = portfolio.get(symbol)
+
+    if position:
+        old_qty = position['quantity']
+        old_avg = position['avg_price']
+        side = position.get('side', 'long')
+
+        if side == 'long':
+            new_qty = old_qty + quantity
+            new_avg = ((old_qty * old_avg) + (quantity * price)) / new_qty
+            portfolio[symbol] = {
+                'quantity': new_qty,
+                'avg_price': round(new_avg, 2),
+                'side': 'long',
+                'last_updated': now
+            }
+        else:
+            if quantity < old_qty:
+                new_qty = old_qty - quantity
+                portfolio[symbol] = {
+                    'quantity': new_qty,
+                    'avg_price': old_avg,
+                    'side': 'short',
+                    'last_updated': now
+                }
+            elif quantity == old_qty:
+                del portfolio[symbol]
+            else:
+                new_long_qty = quantity - old_qty
+                portfolio[symbol] = {
+                    'quantity': new_long_qty,
+                    'avg_price': round(price, 2),
+                    'side': 'long',
+                    'last_updated': now
+                }
     else:
         portfolio[symbol] = {
             'quantity': quantity,
-            'avg_price': price,
-            'last_updated': time.strftime('%Y-%m-%d %H:%M:%S')
+            'avg_price': round(price, 2),
+            'side': 'long',
+            'last_updated': now
         }
     save_portfolio(portfolio)
-    return portfolio[symbol]
+    return portfolio.get(symbol)
 
-def sell_asset(symbol, quantity):
+
+def sell_asset(symbol, quantity, price):
     portfolio = load_portfolio()
-    if symbol in portfolio:
-        current_qty = portfolio[symbol]['quantity']
-        if quantity >= current_qty:
-            del portfolio[symbol]
+    now = time.strftime('%Y-%m-%d %H:%M:%S')
+
+    position = portfolio.get(symbol)
+
+    if position:
+        old_qty = position['quantity']
+        old_avg = position['avg_price']
+        side = position.get('side', 'long')
+
+        if side == 'long':
+            if quantity < old_qty:
+                new_qty = old_qty - quantity
+                portfolio[symbol] = {
+                    'quantity': new_qty,
+                    'avg_price': old_avg,
+                    'side': 'long',
+                    'last_updated': now
+                }
+            elif quantity == old_qty:
+                del portfolio[symbol]
+            else:
+                new_short_qty = quantity - old_qty
+                portfolio[symbol] = {
+                    'quantity': new_short_qty,
+                    'avg_price': round(price, 2),
+                    'side': 'short',
+                    'last_updated': now
+                }
         else:
-            portfolio[symbol]['quantity'] = current_qty - quantity
-            portfolio[symbol]['last_updated'] = time.strftime('%Y-%m-%d %H:%M:%S')
-        save_portfolio(portfolio)
-        return True
-    return False
+            new_qty = old_qty + quantity
+            new_avg = ((old_qty * old_avg) + (quantity * price)) / new_qty
+            portfolio[symbol] = {
+                'quantity': new_qty,
+                'avg_price': round(new_avg, 2),
+                'side': 'short',
+                'last_updated': now
+            }
+    else:
+        portfolio[symbol] = {
+            'quantity': quantity,
+            'avg_price': round(price, 2),
+            'side': 'short',
+            'last_updated': now
+        }
+
+    save_portfolio(portfolio)
+    return True
+
+
+def process_sell_systems():
+    sell_systems = load_sell_systems()
+    if not sell_systems:
+        st.info("No sell systems configured.")
+        return
+
+    portfolio = load_portfolio()
+    any_executed = False
+
+    for symbol, config in sell_systems.items():
+        if config.get("status") != "On":
+            continue
+        if symbol not in portfolio:
+            continue
+
+        current_price_data = get_data(symbol)
+        current_price = current_price_data['price']
+        if current_price <= 0:
+            continue
+
+        levels = config.get("levels", {})
+        for level_key, level in levels.items():
+            if level.get("triggered"):
+                continue
+
+            trigger_price = level.get("price")
+            level_qty = int(level.get("quantity", 0))
+            if trigger_price is None or level_qty <= 0:
+                continue
+
+            current_position_qty = portfolio.get(symbol, {}).get("quantity", 0)
+            if current_position_qty <= 0:
+                break
+
+            if current_price <= trigger_price:
+                qty_to_sell = min(level_qty, current_position_qty)
+                if qty_to_sell <= 0:
+                    continue
+
+                if sell_asset(symbol, qty_to_sell, current_price):
+                    level["triggered"] = True
+                    any_executed = True
+                    st.success(
+                        f"Auto-sell executed for {symbol}: sold {qty_to_sell} units "
+                        f"around ${current_price:.2f} (level {level_key})"
+                    )
+                    portfolio = load_portfolio()
+
+        config["levels"] = levels
+
+    if any_executed:
+        save_sell_systems(sell_systems)
+    else:
+        st.info("No sell levels were triggered based on current market prices.")
 
 def chatgpt_response(message: str):
     try:
@@ -314,18 +450,35 @@ with tab1:
     if my_portfolio:
         portfolio_data = []
         total_value = 0
+        total_pnl = 0
+        total_notional = 0
+
         for symbol, data in my_portfolio.items():
             current_price_data = get_data(symbol)
-            current_price = current_price_data['price'] if current_price_data['price'] > 0 else data['avg_price']
-            position_value = data['quantity'] * current_price
-            pnl = (current_price - data['avg_price']) * data['quantity']
-            pnl_pct = ((current_price - data['avg_price']) / data['avg_price'] * 100) if data['avg_price'] > 0 else 0
+            avg_price = data['avg_price']
+            quantity = data['quantity']
+            side = data.get('side', 'long')
+
+            current_price = current_price_data['price'] if current_price_data['price'] > 0 else avg_price
+            position_value = quantity * current_price
+
+            if side == 'long':
+                pnl = (current_price - avg_price) * quantity
+            else:
+                pnl = (avg_price - current_price) * quantity
+
+            notional = avg_price * quantity
+            pnl_pct = (pnl / notional * 100) if notional > 0 else 0
+
             total_value += position_value
+            total_pnl += pnl
+            total_notional += notional
             
             portfolio_data.append({
                 'Symbol': symbol,
-                'Quantity': data['quantity'],
-                'Avg Price': f"${data['avg_price']:.2f}",
+                'Side': side.capitalize(),
+                'Quantity': quantity,
+                'Avg Price': f"${avg_price:.2f}",
                 'Current Price': f"${current_price:.2f}",
                 'Value': f"${position_value:.2f}",
                 'P&L': f"${pnl:.2f}",
@@ -334,7 +487,13 @@ with tab1:
         
         df_my_portfolio = pd.DataFrame(portfolio_data)
         st.dataframe(df_my_portfolio, width="stretch", hide_index=True)
-        st.metric("Total Portfolio Value", f"${total_value:.2f}")
+
+        total_pnl_pct = (total_pnl / total_notional * 100) if total_notional > 0 else 0
+        val_col, pnl_col = st.columns(2)
+        with val_col:
+            st.metric("Total Portfolio Value", f"${total_value:.2f}")
+        with pnl_col:
+            st.metric("Total P&L", f"${total_pnl:.2f}", delta=f"{total_pnl_pct:.2f}%")
     else:
         st.info("No assets in portfolio. Use the Buy/Sell tab to add positions.")
     
@@ -408,7 +567,14 @@ with tab2:
     
     # BUY Section
     with col1:
-        st.markdown("### 📈 Buy Asset")
+        st.markdown("### 📈 Buy / Cover Asset")
+        buy_side = st.radio(
+            "Direction",
+            options=["Long", "Short"],
+            index=0,
+            horizontal=True,
+            key="buy_side"
+        )
         buy_symbol = st.text_input("Symbol to Buy", placeholder="e.g., AAPL", key="buy_symbol").upper()
         buy_quantity = st.number_input("Quantity", min_value=1, value=1, step=1, key="buy_qty")
         
@@ -420,43 +586,85 @@ with tab2:
                 total_cost = buy_quantity * buy_price
                 st.metric("Total Cost", f"${total_cost:.2f}")
                 
-                if st.button("✅ Execute Buy", type="primary", key="exec_buy"):
-                    result = buy_asset(buy_symbol, buy_quantity, buy_price)
-                    st.success(f"Bought {buy_quantity} shares of {buy_symbol} @ ${buy_price:.2f}")
-                    st.info(f"New position: {result['quantity']} shares @ avg ${result['avg_price']:.2f}")
+                if st.button("✅ Execute Order", type="primary", key="exec_buy"):
+                    if buy_side == "Long":
+                        result = buy_asset(buy_symbol, buy_quantity, buy_price)
+                        st.success(f"Bought {buy_quantity} units of {buy_symbol} @ ${buy_price:.2f}")
+                        if result:
+                            side = result.get('side', 'long').upper()
+                            st.info(
+                                f"New position: {result['quantity']} units @ avg ${result['avg_price']:.2f} "
+                                f"({side})"
+                            )
+                        else:
+                            st.info("Position fully closed.")
+                    else:
+                        if sell_asset(buy_symbol, buy_quantity, buy_price):
+                            st.success(f"Shorted {buy_quantity} units of {buy_symbol} @ ${buy_price:.2f}")
+                            portfolio_after = load_portfolio()
+                            new_pos = portfolio_after.get(buy_symbol)
+                            if new_pos:
+                                side = new_pos.get("side", "short").upper()
+                                st.info(
+                                    f"New position: {new_pos['quantity']} units @ avg ${new_pos['avg_price']:.2f} "
+                                    f"({side})"
+                                )
                     time.sleep(1)
                     st.rerun()
             else:
                 st.error(f"Could not fetch price for {buy_symbol}")
     
-    # SELL Section
+    # SELL / SHORT Section
     with col2:
-        st.markdown("### 📉 Sell Asset")
+        st.markdown("### 📉 Sell / Short Asset")
         my_portfolio = load_portfolio()
         
         if my_portfolio:
-            sell_symbol = st.selectbox("Symbol to Sell", options=list(my_portfolio.keys()), key="sell_symbol")
+            sell_symbol = st.selectbox("Symbol to Sell/Short", options=list(my_portfolio.keys()), key="sell_symbol")
             
             if sell_symbol:
-                current_qty = my_portfolio[sell_symbol]['quantity']
-                avg_price = my_portfolio[sell_symbol]['avg_price']
+                position = my_portfolio[sell_symbol]
+                current_qty = position['quantity']
+                avg_price = position['avg_price']
+                side = position.get('side', 'long')
                 
-                st.info(f"Current holdings: {current_qty} shares @ avg ${avg_price:.2f}")
+                st.info(
+                    f"Current position: {current_qty} units @ avg ${avg_price:.2f} "
+                    f"({side.upper()})"
+                )
                 
-                sell_quantity = st.number_input("Quantity to Sell", min_value=1, max_value=int(current_qty), value=1, step=1, key="sell_qty")
+                sell_quantity = st.number_input(
+                    "Quantity to Sell (you can sell more than you hold to go net short)",
+                    min_value=1,
+                    value=1,
+                    step=1,
+                    key="sell_qty"
+                )
                 
                 price_data = get_data(sell_symbol)
                 if price_data['price'] > 0:
-                    sell_price = st.number_input("Sell Price", min_value=0.01, value=float(price_data['price']), step=0.01, key="sell_price")
+                    sell_price = st.number_input(
+                        "Sell Price",
+                        min_value=0.01,
+                        value=float(price_data['price']),
+                        step=0.01,
+                        key="sell_price"
+                    )
                     total_proceeds = sell_quantity * sell_price
-                    pnl = (sell_price - avg_price) * sell_quantity
-                    st.metric("Total Proceeds", f"${total_proceeds:.2f}")
-                    st.metric("P&L", f"${pnl:.2f}", delta=f"{(pnl/total_proceeds*100):.2f}%")
+                    if side == 'long':
+                        pnl = (sell_price - avg_price) * sell_quantity
+                    else:
+                        pnl = (avg_price - sell_price) * sell_quantity
+                    notional = avg_price * sell_quantity
+                    pnl_pct = (pnl / notional * 100) if notional > 0 else 0.0
                     
-                    if st.button("✅ Execute Sell", type="primary", key="exec_sell"):
-                        if sell_asset(sell_symbol, sell_quantity):
-                            st.success(f"Sold {sell_quantity} shares of {sell_symbol} @ ${sell_price:.2f}")
-                            st.info(f"P&L: ${pnl:.2f}")
+                    st.metric("Total Proceeds", f"${total_proceeds:.2f}")
+                    st.metric("P&L (per this trade)", f"${pnl:.2f}", delta=f"{pnl_pct:.2f}%")
+                    
+                    if st.button("✅ Execute Sell / Short", type="primary", key="exec_sell"):
+                        if sell_asset(sell_symbol, sell_quantity, sell_price):
+                            st.success(f"Sold {sell_quantity} units of {sell_symbol} @ ${sell_price:.2f}")
+                            st.info(f"Trade P&L (approx.): ${pnl:.2f}")
                             time.sleep(1)
                             st.rerun()
                         else:
@@ -464,7 +672,7 @@ with tab2:
                 else:
                     st.error(f"Could not fetch price for {sell_symbol}")
         else:
-            st.info("No assets in portfolio to sell")
+            st.info("No assets in portfolio to sell or short")
 
 # Tab 3: Add Equity
 with tab3:
