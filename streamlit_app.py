@@ -560,7 +560,7 @@ with st.expander("📘 Tutoriel d'utilisation de l'outil"):
     2. Allez ensuite dans chaque onglet, l'un après l'autre, sans forcément passer d'ordres au début :
        contentez-vous de lire le texte d'aide en bas de page et de repérer les boutons qui déclenchent de vraies actions.
     3. Quand vous vous sentez à l'aise, commencez petit : 
-       un premier achat manuel, un premier système Add Equity, une première question à l'IA.
+       un premier achat manuel, un premier système dans Trading Systems, une première question à l'IA.
     4. Revenez quelques jours plus tard pour voir ce qui s'est passé : 
        avez-vous respecté votre plan ? vos systèmes ont-ils réagi comme prévu ? qu'avez-vous appris ?
     
@@ -582,7 +582,7 @@ with st.sidebar:
 tab1, tab2, tab3, tab4 = st.tabs([
     "📊 Dashboard",
     "💰 Buy/Sell",
-    "➕ Add Equity",
+    "📋 Trading Systems",
     "🧾 Options",
 ])
 
@@ -739,7 +739,7 @@ with tab1:
                     time.sleep(0.5)
                     st.rerun()
     else:
-        st.info("No trading systems configured. Add an equity in the 'Add Equity' tab.")
+        st.info("No trading systems configured. Add one in the 'Trading Systems' tab.")
 
 # Tab 2: Buy/Sell
 with tab2:
@@ -875,11 +875,11 @@ with tab2:
         else:
             st.info("No assets in portfolio to sell or short")
 
-# Tab 3: Add Equity
+# Tab 3: Trading Systems
 with tab3:
-    with st.expander("📘 Comprendre Add Equity"):
+    with st.expander("📘 Comprendre Trading Systems"):
         st.markdown("""
-        ### ➕ Ce que vous faites dans Add Equity
+        ### 📋 Ce que vous faites dans Trading Systems
         
         Ici, vous ne passez pas d’ordres immédiats : vous **concevez des systèmes automatiques** (long ou short)
         qui interviendront pour vous à différents niveaux de prix prédéfinis.
@@ -908,7 +908,7 @@ with tab3:
         sans avoir à rester devant les écrans à chaque mouvement de marché.
         """)
 
-    st.subheader("➕ Add New Equity")
+    st.subheader("📋 Trading Systems")
     
     # Check current count
     equities = load_equities()
