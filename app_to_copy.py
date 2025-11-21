@@ -2169,7 +2169,7 @@ def heston_mc_pricer(
     return float(math.exp(-r * T) * np.mean(payoff))
 
 
-def download_options_cboe(symbol: str, option_type: str) -> tuple[pd.DataFrame, float]:
+def download_options_cboe(symbol: str, option_type: str) -> tuple[pd.DataFrame, float, float, float]:
     url = f"https://cdn.cboe.com/api/global/delayed_quotes/options/{symbol.upper()}.json"
     resp = requests.get(url, timeout=15)
     resp.raise_for_status()
@@ -2177,6 +2177,8 @@ def download_options_cboe(symbol: str, option_type: str) -> tuple[pd.DataFrame, 
     data = payload.get("data", {})
     options = data.get("options", [])
     spot = float(data.get("current_price") or data.get("close") or np.nan)
+    risk_free = float(data.get("risk_free_rate") or 0.0)
+    dividend_yield = float(data.get("dividend_yield") or 0.0)
     now = pd.Timestamp.utcnow().tz_localize(None)
     pattern = re.compile(rf"^{symbol.upper()}(?P<expiry>\d{{6}})(?P<cp>[CP])(?P<strike>\d+)$")
 
@@ -2221,15 +2223,17 @@ def download_options_cboe(symbol: str, option_type: str) -> tuple[pd.DataFrame, 
 
     df = pd.DataFrame(rows)
     df = df[df["T"] > MIN_IV_MATURITY]
-    return df, spot
+    return df, spot, risk_free, dividend_yield
 
 
 @st.cache_data(show_spinner=False)
-def load_cboe_data(symbol: str) -> tuple[pd.DataFrame, pd.DataFrame, float]:
-    calls_df, spot_calls = download_options_cboe(symbol, "call")
-    puts_df, spot_puts = download_options_cboe(symbol, "put")
+def load_cboe_data(symbol: str) -> tuple[pd.DataFrame, pd.DataFrame, float, float, float]:
+    calls_df, spot_calls, rf_calls, div_calls = download_options_cboe(symbol, "call")
+    puts_df, spot_puts, rf_puts, div_puts = download_options_cboe(symbol, "put")
     S0_ref = float(np.nanmean([spot_calls, spot_puts]))
-    return calls_df, puts_df, S0_ref
+    risk_free = float(np.nanmean([rf_calls, rf_puts]))
+    dividend_yield = float(np.nanmean([div_calls, div_puts]))
+    return calls_df, puts_df, S0_ref, risk_free, dividend_yield
 
 
 def prices_from_unconstrained(u: torch.Tensor, S0_t: torch.Tensor, K_t: torch.Tensor, T_t: torch.Tensor, r: float, q: float):
@@ -2590,10 +2594,12 @@ def ui_heston_full_pipeline(auto_run: bool = False):
 
     if fetch_btn:
         try:
-            calls_df, puts_df, S0_ref = load_cboe_data(ticker)
+            calls_df, puts_df, S0_ref, rf_rate, div_yield = load_cboe_data(ticker)
             state.heston_calls_df = calls_df
             state.heston_puts_df = puts_df
             state.heston_S0_ref = S0_ref
+            st.session_state["common_rate"] = float(rf_rate)
+            st.session_state["common_dividend"] = float(div_yield)
             st.info(f"📡 Données CBOE chargées pour {ticker} (cache)")
             st.success(f"{len(calls_df)} calls, {len(puts_df)} puts | S0 ≈ {S0_ref:.2f}")
             maturity_list = sorted(calls_df["T"].round(2).unique().tolist())
@@ -2949,16 +2955,10 @@ with col_left:
     # Volatilité déduite (ou fallback session)
     sigma_common = float(st.session_state.get("sigma_common", 0.2))
     st.markdown(f"**σ (IV déduite)** : {sigma_common:.4f}")
-    r_common = st.number_input(
-        "Taux sans risque r",
-        key="r_common",
-        help="Taux sans risque continu utilisé pour actualiser les payoffs.",
-    )
-    d_common = st.number_input(
-        "Dividende continu d",
-        key="d_common",
-        help="Dividende (ou rendement de portage) continu du sous-jacent.",
-    )
+    r_common = float(st.session_state.get("common_rate", 0.0))
+    d_common = float(st.session_state.get("common_dividend", 0.0))
+    st.markdown(f"**r (risk-free CBOE)** : {r_common:.4f}")
+    st.markdown(f"**q (dividende continu CBOE)** : {d_common:.4f}")
     heatmap_span = st.number_input(
         "Span autour du spot (heatmaps)",
         min_value=0.1,
