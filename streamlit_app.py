@@ -132,6 +132,15 @@ def save_expired_options(expired_options):
     with open(EXPIRED_OPTIONS_FILE, 'w') as f:
         json.dump(expired_options, f, indent=2)
 
+
+def floor_3(v: float) -> float:
+    """
+    Floor a numeric value to 3 decimal places (no rounding).
+    Example: 1.999999 -> 1.999, 1.994 -> 1.994
+    """
+    v = float(v or 0.0)
+    return math.floor(v * 1000.0) / 1000.0
+
 def buy_asset(symbol, quantity, price):
     portfolio = load_portfolio()
     now = time.strftime('%Y-%m-%d %H:%M:%S')
@@ -298,6 +307,7 @@ def trade_option_contract(
     side,
     quantity,
     price,
+    spot_at_trade=None,
 ):
     options_portfolio = load_options_portfolio()
     now = time.strftime('%Y-%m-%d %H:%M:%S')
@@ -308,6 +318,7 @@ def trade_option_contract(
         old_qty = position['quantity']
         old_avg = position['avg_price']
         old_side = position.get('side', 'long')
+        s0 = position.get('S0')
 
         if old_side == side:
             new_qty = old_qty + quantity
@@ -318,7 +329,8 @@ def trade_option_contract(
                 'strike': strike,
                 'expiration': expiration,
                 'quantity': new_qty,
-                'avg_price': round(new_avg, 4),
+                'avg_price': floor_3(new_avg),
+                'S0': s0 if s0 is not None else (floor_3(spot_at_trade) if spot_at_trade is not None else None),
                 'side': side,
                 'last_updated': now,
             }
@@ -332,6 +344,7 @@ def trade_option_contract(
                     'expiration': expiration,
                     'quantity': new_qty,
                     'avg_price': old_avg,
+                    'S0': s0,
                     'side': old_side,
                     'last_updated': now,
                 }
@@ -345,7 +358,8 @@ def trade_option_contract(
                     'strike': strike,
                     'expiration': expiration,
                     'quantity': new_qty,
-                    'avg_price': round(price, 4),
+                    'avg_price': floor_3(price),
+                    'S0': s0 if s0 is not None else (floor_3(spot_at_trade) if spot_at_trade is not None else None),
                     'side': side,
                     'last_updated': now,
                 }
@@ -356,7 +370,8 @@ def trade_option_contract(
             'strike': strike,
             'expiration': expiration,
             'quantity': quantity,
-            'avg_price': round(price, 4),
+            'avg_price': floor_3(price),
+            'S0': floor_3(spot_at_trade) if spot_at_trade is not None else None,
             'side': side,
             'last_updated': now,
         }
@@ -373,7 +388,8 @@ def fetch_options_chain(symbol):
         payload = response.json()
         data_block = payload.get("data", {})
         options = data_block.get("options", [])
-        spot = data_block.get("current_price", 0.0) or 0.0
+        raw_spot = data_block.get("current_price", 0.0) or 0.0
+        spot = floor_3(raw_spot)
 
         today = datetime.date.today()
         chain = []
@@ -398,6 +414,7 @@ def fetch_options_chain(symbol):
 
             try:
                 strike = int(strike_code) / 1000.0
+                strike = floor_3(strike)
             except Exception:
                 continue
 
@@ -414,6 +431,8 @@ def fetch_options_chain(symbol):
                 price = last
             else:
                 price = max(bid, ask)
+
+            price = floor_3(price)
 
             iv = c.get("iv", 0.0) or 0.0
 
@@ -531,6 +550,7 @@ def process_expired_options():
             pnl_per_unit = avg_price - payoff_per_unit
 
         total_pnl = pnl_per_unit * quantity
+        s0 = float(pos.get("S0", 0.0) or 0.0)
 
         expired_options[contract_symbol] = {
             "underlying": underlying,
@@ -540,6 +560,7 @@ def process_expired_options():
             "expiration": exp_str,
             "quantity": quantity,
             "avg_price": avg_price,
+            "S0": s0,
             "underlying_close": S_T,
             "payoff_per_unit": payoff_per_unit,
             "pnl_per_unit": pnl_per_unit,
@@ -802,7 +823,7 @@ with tab1:
                 'Symbol': symbol,
                 'Side': side.capitalize(),
                 'Quantity': quantity,
-                'Avg Price': f"${avg_price:.2f}",
+                'S_0 Price': f"${avg_price:.2f}",
                 'Current Price': f"${current_price:.2f}",
                 'Value': f"${position_value:.2f}",
                 'P&L': f"${pnl:.2f}",
@@ -917,6 +938,7 @@ with tab1:
                 else:
                     pnl_per_unit = avg_price - bs_price
                 total_pnl_opt = pnl_per_unit * quantity
+                s0 = float(pos.get("S0", 0.0) or 0.0)
 
                 options_rows.append({
                     "Contract": contract_symbol,
@@ -926,8 +948,8 @@ with tab1:
                     "Strike": strike,
                     "Expiration": pos.get("expiration"),
                     "Quantity": quantity,
-                    "Avg Price": f"${avg_price:.4f}",
-                    "Model Price": f"${bs_price:.4f}",
+                    "T_0 Price": f"${avg_price:.3f}",
+                    "Current Price (model)": f"${bs_price:.4f}",
                     "Model P&L": f"${total_pnl_opt:.2f}",
                 })
 
@@ -1023,7 +1045,7 @@ with tab1:
                                 st.caption("CBOE row used for σ / T / S:")
                                 st.json(cboe_source)
                         with col_b:
-                            st.metric("Avg Price", f"${avg_price:.4f}")
+                            st.metric("T_0 Price", f"${avg_price:.4f}")
                         with col_c:
                             st.metric(
                                 "PnL if closed",
@@ -1063,8 +1085,8 @@ with tab1:
                         "Strike": opt.get("strike"),
                         "Expiration": opt.get("expiration"),
                         "Quantity": opt.get("quantity"),
-                        "Avg Price": f"${float(opt.get('avg_price', 0.0) or 0.0):.4f}",
-                        "Underlying Close": f"${float(opt.get('underlying_close', 0.0) or 0.0):.2f}",
+                        "T_0 Price": f"${float(opt.get('avg_price', 0.0) or 0.0):.3f}",
+                        "Current Price (S_T)": f"${float(opt.get('underlying_close', 0.0) or 0.0):.3f}",
                         "Total P&L": f"${float(opt.get('pnl_total', 0.0) or 0.0):.2f}",
                         "Closed At": opt.get("closed_at"),
                     })
@@ -1540,10 +1562,10 @@ with tab4:
                                 chips_html_call = f"""
                                 <div style='display:flex;flex-wrap:wrap;gap:0.6rem;margin-top:0.6rem;'>
                                   <span style='background-color:#e3f2fd;color:#0d47a1;padding:6px 14px;border-radius:999px;font-size:0.9rem;font-weight:600;'>Call</span>
-                                  <span style='background-color:#fffde7;color:#f57f17;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>Spot = {spot_call:.2f}</span>
-                                  <span style='background-color:#e8f5e9;color:#1b5e20;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>T = {selected_call['T']:.2f}</span>
-                                  <span style='background-color:#fff3e0;color:#e65100;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>K = {selected_call['strike']:.2f}</span>
-                                  <span style='background-color:#f3e5f5;color:#4a148c;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>Price = {selected_call['price']:.2f}</span>
+                                  <span style='background-color:#fffde7;color:#f57f17;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>Spot = {spot_call:.3f}</span>
+                                  <span style='background-color:#e8f5e9;color:#1b5e20;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>T = {selected_call['T']:.3f}</span>
+                                  <span style='background-color:#fff3e0;color:#e65100;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>K = {selected_call['strike']:.3f}</span>
+                                  <span style='background-color:#f3e5f5;color:#4a148c;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>Price = {selected_call['price']:.3f}</span>
                                   <span style='background-color:#fce4ec;color:#880e4f;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>IV = {selected_call['iv']:.2f}</span>
                                 </div>
                                 """
@@ -1563,7 +1585,7 @@ with tab4:
                                     key="opt_qty_call",
                                 )
                                 price_call = float(selected_call.get("price", 0.0) or 0.0)
-                                st.caption(f"Trade price (from CBOE): ${price_call:.2f}")
+                                st.caption(f"Trade price (from CBOE): ${price_call:.3f}")
 
                                 if st.button(
                                     "✅ Execute Call Trade",
@@ -1579,11 +1601,12 @@ with tab4:
                                         side=side_call.lower(),
                                         quantity=int(qty_call),
                                         price=float(price_call),
+                                        spot_at_trade=spot_call,
                                     )
                                     if result:
                                         st.success(
                                             f"{side_call} {qty_call}x {selected_call['symbol']} "
-                                            f"@ {price_call:.2f} recorded in options portfolio."
+                                            f"@ {price_call:.3f} recorded in options portfolio."
                                         )
                                     else:
                                         st.success("Option position updated / closed.")
@@ -1634,10 +1657,10 @@ with tab4:
                                 chips_html_put = f"""
                                 <div style='display:flex;flex-wrap:wrap;gap:0.6rem;margin-top:0.6rem;'>
                                   <span style='background-color:#ffebee;color:#b71c1c;padding:6px 14px;border-radius:999px;font-size:0.9rem;font-weight:600;'>Put</span>
-                                  <span style='background-color:#fffde7;color:#f57f17;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>Spot = {spot_put:.2f}</span>
-                                  <span style='background-color:#e8f5e9;color:#1b5e20;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>T = {selected_put['T']:.2f}</span>
-                                  <span style='background-color:#fff3e0;color:#e65100;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>K = {selected_put['strike']:.2f}</span>
-                                  <span style='background-color:#ede7f6;color:#311b92;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>Price = {selected_put['price']:.2f}</span>
+                                  <span style='background-color:#fffde7;color:#f57f17;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>Spot = {spot_put:.3f}</span>
+                                  <span style='background-color:#e8f5e9;color:#1b5e20;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>T = {selected_put['T']:.3f}</span>
+                                  <span style='background-color:#fff3e0;color:#e65100;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>K = {selected_put['strike']:.3f}</span>
+                                  <span style='background-color:#ede7f6;color:#311b92;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>Price = {selected_put['price']:.3f}</span>
                                   <span style='background-color:#e0f7fa;color:#006064;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>IV = {selected_put['iv']:.2f}</span>
                                 </div>
                                 """
@@ -1657,7 +1680,7 @@ with tab4:
                                     key="opt_qty_put",
                                 )
                                 price_put = float(selected_put.get("price", 0.0) or 0.0)
-                                st.caption(f"Trade price (from CBOE): ${price_put:.2f}")
+                                st.caption(f"Trade price (from CBOE): ${price_put:.3f}")
 
                                 if st.button(
                                     "✅ Execute Put Trade",
@@ -1673,11 +1696,12 @@ with tab4:
                                         side=side_put.lower(),
                                         quantity=int(qty_put),
                                         price=float(price_put),
+                                        spot_at_trade=spot_put,
                                     )
                                     if result:
                                         st.success(
                                             f"{side_put} {qty_put}x {selected_put['symbol']} "
-                                            f"@ {price_put:.2f} recorded in options portfolio."
+                                            f"@ {price_put:.3f} recorded in options portfolio."
                                         )
                                     else:
                                         st.success("Option position updated / closed.")

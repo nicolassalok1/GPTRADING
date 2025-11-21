@@ -1,0 +1,30 @@
+{
+  "AAPL251115C00180000": {
+    "underlying": "AAPL",
+    "type": "call",
+    "side": "long",
+    "strike": 180.0,
+    "expiration": "2025-11-15",
+    "quantity": 2,
+    "avg_price": 1.75,
+    "underlying_close": 270.79,
+    "payoff_per_unit": 90.79000000000002,
+    "pnl_per_unit": 89.04000000000002,
+    "pnl_total": 178.08000000000004,
+    "closed_at": "2025-11-21"
+  },
+  "SPY250930P00450000": {
+    "underlying": "SPY",
+    "type": "put",
+    "side": "short",
+    "strike": 450.0,
+    "expiration": "2025-09-30",
+    "quantity": 3,
+    "avg_price": 2.25,
+    "underlying_close": 660.23,
+    "payoff_per_unit": 0.0,
+    "pnl_per_unit": 2.25,
+    "pnl_total": 6.75,
+    "closed_at": "2025-11-21"
+  }
+}
