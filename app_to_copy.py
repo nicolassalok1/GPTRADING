@@ -3022,14 +3022,22 @@ if not tkr_hist:
 else:
     hist_df = pd.DataFrame()
     try:
-        hist_df = yf.Ticker(tkr_hist).history(period="1y", interval="1d", auto_adjust=False, actions=False, threads=False)
+        # Use helper CLI to download history (workaround for user-agent issues)
+        result = subprocess.run(
+            [sys.executable, "fetch_history_cli.py", "--ticker", tkr_hist, "--period", "1y", "--interval", "1d"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0 and result.stdout:
+            hist_df = pd.read_csv(io.StringIO(result.stdout))
+            if "Date" in hist_df.columns:
+                hist_df["Date"] = pd.to_datetime(hist_df["Date"])
+                hist_df.set_index("Date", inplace=True)
+        elif result.returncode != 0:
+            st.warning("Impossible de récupérer l'historique 1 an (via CLI).")
     except Exception as _hist_err:
-        # Fallback : yfinance download direct (certaines erreurs d'user agent)
-        try:
-            hist_df = yf.download(tkr_hist, period="1y", interval="1d", progress=False, auto_adjust=False, actions=False)
-        except Exception:
-            st.warning(f"Impossible de récupérer l'historique 1 an : {_hist_err}")
-            hist_df = pd.DataFrame()
+        st.warning(f"Impossible de récupérer l'historique 1 an : {_hist_err}")
 
     if not hist_df.empty and "Close" in hist_df.columns:
         hist_fig = go.Figure()
@@ -3045,6 +3053,11 @@ else:
             title=f"{tkr_hist} - Close (1 an)",
             xaxis_title="Date",
             yaxis_title="Prix",
+            xaxis=dict(
+                type="date",
+                tickformat="%d/%m/%Y",
+                ticklabelmode="period",
+            ),
         )
         st.plotly_chart(hist_fig, use_container_width=True)
     else:
@@ -3649,17 +3662,18 @@ with tab_lookback:
             f"S0={common_spot_value:.4f}, T={T_common:.4f}, r={r_lb_mc:.4f}, σ={sigma_common:.4f}, "
             f"t={t0_lb_mc:.4f}, N_iters={int(n_iters_lb)}"
         )
-        with st.spinner("Calcul de la heatmap Monte Carlo"):
-            heatmap_lb_mc = _compute_lookback_mc_heatmap(
-                heatmap_spot_values,
-                heatmap_maturity_values,
-                t0_lb_mc,
-                r_lb_mc,
-                sigma_common,
-                int(n_iters_lb),
-            )
-        st.write("Heatmap Lookback (Monte Carlo)")
-        _render_heatmap(heatmap_lb_mc, heatmap_spot_values, heatmap_maturity_values, "Prix Lookback (MC)")
+        if st.checkbox("Afficher la heatmap Lookback (Monte Carlo)", value=False, key="show_lb_mc_heatmap"):
+            with st.spinner("Calcul de la heatmap Monte Carlo"):
+                heatmap_lb_mc = _compute_lookback_mc_heatmap(
+                    heatmap_spot_values,
+                    heatmap_maturity_values,
+                    t0_lb_mc,
+                    r_lb_mc,
+                    sigma_common,
+                    int(n_iters_lb),
+                )
+            st.write("Heatmap Lookback (Monte Carlo)")
+            _render_heatmap(heatmap_lb_mc, heatmap_spot_values, heatmap_maturity_values, "Prix Lookback (MC)")
 
 
 with tab_barrier:
