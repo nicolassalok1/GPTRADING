@@ -1728,7 +1728,7 @@ def compute_asian_price(
     )
 
 
-def ui_basket_surface(spot_common, maturity_common, rate_common, strike_common):
+def ui_basket_surface(spot_common, maturity_common, rate_common, strike_common, key_prefix: str = "basket"):
     st.header("Basket – Pricing NN + corrélation (3 actifs)")
     render_unlock_sidebar_button("tab_basket", "🔓 Réactiver T (onglet Basket)")
 
@@ -1743,6 +1743,9 @@ def ui_basket_surface(spot_common, maturity_common, rate_common, strike_common):
             trimmed += ["SPY"] * (min_assets - len(trimmed))
         return trimmed
 
+    def _k(suffix: str) -> str:
+        return f"{key_prefix}_{suffix}"
+
     if "basket_tickers" not in st.session_state:
         default_list = csv_tickers if csv_tickers else ["AAPL", "SPY", "MSFT"]
         st.session_state["basket_tickers"] = _normalize_tickers(default_list)
@@ -1751,12 +1754,20 @@ def ui_basket_surface(spot_common, maturity_common, rate_common, strike_common):
         st.subheader("Sélection des assets (2 à 10)")
         btn_col_add, btn_col_remove = st.columns(2)
         with btn_col_add:
-            if st.button("Ajouter un asset", disabled=len(st.session_state["basket_tickers"]) >= max_assets):
+            if st.button(
+                "Ajouter un asset",
+                key=_k("btn_add_asset"),
+                disabled=len(st.session_state["basket_tickers"]) >= max_assets,
+            ):
                 st.session_state["basket_tickers"].append(
                     f"TICKER{len(st.session_state['basket_tickers']) + 1}"
                 )
         with btn_col_remove:
-            if st.button("Retirer un asset", disabled=len(st.session_state["basket_tickers"]) <= min_assets):
+            if st.button(
+                "Retirer un asset",
+                key=_k("btn_remove_asset"),
+                disabled=len(st.session_state["basket_tickers"]) <= min_assets,
+            ):
                 st.session_state["basket_tickers"].pop()
 
         tickers = []
@@ -1765,7 +1776,7 @@ def ui_basket_surface(spot_common, maturity_common, rate_common, strike_common):
                 cols = st.columns(3)
             col = cols[i % 3]
             with col:
-                tick = st.text_input(f"Ticker {i + 1}", value=default_tk, key=f"corr_tk_dynamic_{i}")
+                tick = st.text_input(f"Ticker {i + 1}", value=default_tk, key=_k(f"corr_tk_dynamic_{i}"))
                 tickers.append(tick.strip().upper() or default_tk)
         tickers = tickers[:max_assets]
         if len(tickers) < min_assets:
@@ -1773,14 +1784,14 @@ def ui_basket_surface(spot_common, maturity_common, rate_common, strike_common):
         st.session_state["basket_tickers"] = tickers
     tickers = st.session_state["basket_tickers"]
 
-    period = st.selectbox("Période yfinance", ["1mo", "3mo", "6mo", "1y"], index=0, key="corr_period")
-    interval = st.selectbox("Intervalle", ["1d", "1h"], index=0, key="corr_interval")
+    period = st.selectbox("Période yfinance", ["1mo", "3mo", "6mo", "1y"], index=0, key=_k("corr_period"))
+    interval = st.selectbox("Intervalle", ["1d", "1h"], index=0, key=_k("corr_interval"))
 
     st.caption(
         "Le calcul de corrélation utilise les prix de clôture présents dans data/closing_prices.csv (générés via le script). "
         "En cas d'échec, une matrice de corrélation inventée sera utilisée."
     )
-    regen_csv = st.button("Mettre à jour la Matrice de Corrélation", key="btn_regen_closing")
+    regen_csv = st.button("Mettre à jour la Matrice de Corrélation", key=_k("btn_regen_closing"))
     try:
         if regen_csv or not closing_path.exists():
             cmd = [sys.executable, "fetch_closing_prices.py", "--tickers", *tickers, "--output", "data/closing_prices.csv"]
@@ -1997,6 +2008,7 @@ def ui_asian_options(
         "Calculer le prix asiatique (Call)",
         key="btn_price_asian",
     ):
+        progress = st.progress(0)
         try:
             n_obs_price = max(2, int(50 * float(maturity_common)))
             price_asian_call, _, _ = asian_mc_control_variate(
@@ -2011,9 +2023,12 @@ def ui_asian_options(
                 antithetic=True,
                 seed=None,
             )
+            progress.progress(100)
             st.success(f"Prix call asiatique arithmétique (MC + control variate) = {price_asian_call:.6f}")
         except Exception as exc:
             st.error(f"Erreur lors du pricing asiatique : {exc}")
+        finally:
+            progress.empty()
     st.caption(
         f"Paramètres utilisés pour le prix asiatique : "
         f"S0={spot_common:.4f}, K={strike_common_local:.4f}, "
@@ -2076,6 +2091,9 @@ def ui_asian_options(
     prices_put = np.zeros((n_t, n_k), dtype=float)
 
     with st.spinner("Calcul des surfaces de prix (MC asiatique)…"):
+        progress_surface = st.progress(0)
+        total_iters = len(t_vals) * len(k_vals)
+        done = 0
         for i_t, t_val in enumerate(t_vals):
             n_obs = max(2, int(50 * t_val))
             for i_k, k_val in enumerate(k_vals):
@@ -2105,6 +2123,10 @@ def ui_asian_options(
                 )
                 prices_call[i_t, i_k] = call_price
                 prices_put[i_t, i_k] = put_price
+                done += 1
+                if total_iters > 0:
+                    progress_surface.progress(int((done / total_iters) * 100))
+        progress_surface.empty()
 
     fig_call, ax_call = plt.subplots(figsize=(7, 4))
     im0 = ax_call.imshow(
@@ -3099,6 +3121,22 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
         else:
             st.write(f"Heatmap Put ({label})")
             _render_heatmap(put_matrix, x_vals, y_vals, f"Put ({label})")
+    # Heston Carr–Madan pricer helpers
+    def _heston_params_from_state() -> HestonParams:
+        return HestonParams(
+            torch.tensor(float(st.session_state.get("heston_kappa_common", 2.0)), device=HES_DEVICE),
+            torch.tensor(float(st.session_state.get("heston_theta_common", 0.04)), device=HES_DEVICE),
+            torch.tensor(float(st.session_state.get("heston_eta_common", 0.5)), device=HES_DEVICE),
+            torch.tensor(float(st.session_state.get("heston_rho_common", -0.7)), device=HES_DEVICE),
+            torch.tensor(float(st.session_state.get("heston_v0_common", 0.04)), device=HES_DEVICE),
+        )
+
+    def _carr_madan_price(S0: float, K: float, T: float, r: float, q: float, opt_char: str, params: HestonParams) -> float:
+        call_price = float(carr_madan_call_torch(S0, r, q, T, params, K))
+        if opt_char == "c":
+            return call_price
+        # Put via parité call-put
+        return float(call_price - S0 * math.exp(-q * T) + K * math.exp(-r * T))
     (
         tab_european,
         tab_american,
@@ -3151,6 +3189,86 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
             ),
         )
 
+        st.caption("Pricing direct avec Carr–Madan (Heston calibré).")
+        params_heston = _heston_params_from_state()
+        cpflag_heston = option_label
+        if st.button(
+            f"Calculer le prix Heston Carr–Madan ({cpflag_heston})",
+            key=_k("btn_price_heston_cm"),
+        ):
+            try:
+                price_cm = _carr_madan_price(
+                    S0=float(common_spot_value),
+                    K=float(common_strike_value),
+                    T=float(common_maturity_value),
+                    r=float(common_rate_value),
+                    q=float(d_common),
+                    opt_char=option_char,
+                    params=params_heston,
+                )
+                st.success(f"Prix Heston (Carr–Madan) {cpflag_heston} = {price_cm:.6f}")
+            except Exception as exc:
+                st.error(f"Erreur Carr–Madan : {exc}")
+
+        with st.expander("Visualisations Heston (Carr–Madan)", expanded=False):
+            try:
+                with st.spinner("Calcul heatmap & surface IV Heston…"):
+                    k_vals = heatmap_strike_values
+                    t_vals = heatmap_maturity_values
+
+                    call_matrix = np.zeros((len(t_vals), len(k_vals)), dtype=float)
+                    put_matrix = np.zeros_like(call_matrix)
+                    for i_t, t_val in enumerate(t_vals):
+                        for j_k, k_val in enumerate(k_vals):
+                            call_matrix[i_t, j_k] = _carr_madan_price(
+                                S0=float(common_spot_value),
+                                K=float(k_val),
+                                T=float(t_val),
+                                r=float(common_rate_value),
+                                q=float(d_common),
+                                opt_char="c",
+                                params=params_heston,
+                            )
+                            put_matrix[i_t, j_k] = _carr_madan_price(
+                                S0=float(common_spot_value),
+                                K=float(k_val),
+                                T=float(t_val),
+                                r=float(common_rate_value),
+                                q=float(d_common),
+                                opt_char="p",
+                                params=params_heston,
+                            )
+
+                    # Surface IV sur la base du type d’option courant (call/put)
+                    k_grid, t_grid = np.meshgrid(k_vals, t_vals)
+                    price_grid = call_matrix if option_char == "c" else put_matrix
+                    iv_grid = np.full_like(price_grid, np.nan, dtype=float)
+                    for i_t, t_val in enumerate(t_vals):
+                        for j_k, k_val in enumerate(k_vals):
+                            iv_grid[i_t, j_k] = implied_vol_option(
+                                price=float(price_grid[i_t, j_k]),
+                                S=float(common_spot_value),
+                                K=float(k_val),
+                                T=float(t_val),
+                                r=float(common_rate_value),
+                                option_type="call" if option_char == "c" else "put",
+                            )
+                    # Disposition responsive : deux colonnes (Call/Put heatmap prix et surface IV) qui se superposent sur mobile.
+                    col_heatmap, col_iv = st.columns(2)
+                    with col_heatmap:
+                        _render_heatmaps_for_current_option(
+                            "Heston Carr–Madan (K, T)",
+                            call_matrix,
+                            put_matrix,
+                            k_vals,
+                            t_vals,
+                        )
+                    with col_iv:
+                        iv_fig = make_iv_surface_figure(k_grid, t_grid, iv_grid, title_suffix=" (Heston Carr–Madan)")
+                        st.pyplot(iv_fig)
+            except Exception as exc:
+                st.error(f"Erreur calcul heatmap / surface IV Heston : {exc}")
+
         st.divider()
         st.subheader("Black–Scholes–Merton (prix ponctuel + heatmaps)")
         render_unlock_sidebar_button("eu_bsm", "🔓 Réactiver T (onglet BSM)")
@@ -3194,16 +3312,6 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
             f"T={common_maturity_value:.4f}, r={common_rate_value:.4f}, "
             f"d={float(d_common):.4f}, σ={common_sigma_value:.4f}"
         )
-        st.markdown("**Heatmaps BSM**")
-        call_heatmap_bsm, put_heatmap_bsm = _compute_bsm_heatmaps(
-            heatmap_spot_values,
-            heatmap_strike_values,
-            T_common,
-            r_common - d_common,
-            sigma_common,
-        )
-        _render_heatmaps_for_current_option("BSM", call_heatmap_bsm, put_heatmap_bsm, heatmap_spot_values, heatmap_strike_values)
-
         st.divider()
         st.subheader("Monte Carlo (prix ponctuel + option heatmaps)")
         render_unlock_sidebar_button("eu_mc", "🔓 Réactiver T (onglet Monte Carlo)")
@@ -3237,12 +3345,6 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
             key=_k("n_steps_eu"),
             help="Nombre de pas de temps utilisés pour discrétiser la maturité.",
         )
-        compute_heatmaps_mc = st.checkbox(
-            "Calculer également les heatmaps Monte Carlo",
-            value=False,
-            key=_k("run_mc_heatmaps"),
-            help="Décoche pour ne calculer que le prix ponctuel (plus rapide).",
-        )
         cpflag_eu_mc = option_label
         st.caption("Type fixé par l’onglet Call / Put en haut de page.")
         if st.button(
@@ -3268,38 +3370,18 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                     payoff = np.maximum(common_strike_value - ST, 0.0)
                 price_mc = float(np.exp(-common_rate_value * common_maturity_value) * payoff.mean())
                 st.success(f"Prix Monte Carlo ({cpflag_eu_mc}) = {price_mc:.6f}")
-                progress.progress(65)
-
-                if compute_heatmaps_mc:
-                    with st.spinner("Calcul des heatmaps Monte Carlo…"):
-                        call_heatmap_mc, put_heatmap_mc = _compute_mc_heatmaps(
-                            heatmap_spot_values,
-                            heatmap_strike_values,
-                            T_common,
-                            r_common - d_common,
-                            sigma_common,
-                            int(n_paths_eu),
-                            int(n_steps_eu),
-                        )
-                    _render_heatmaps_for_current_option(
-                        "Monte Carlo",
-                        call_heatmap_mc,
-                        put_heatmap_mc,
-                        heatmap_spot_values,
-                        heatmap_strike_values,
-                    )
                 progress.progress(100)
             except Exception as exc:
                 st.error(f"Erreur Monte Carlo européen : {exc}")
             finally:
                 progress.empty()
-            st.caption(
-                f"Paramètres utilisés pour le prix unique Monte Carlo : "
-                f"S0={common_spot_value:.4f}, K={common_strike_value:.4f}, "
-                f"T={common_maturity_value:.4f}, r={common_rate_value:.4f}, "
-                f"d={float(d_common):.4f}, σ={common_sigma_value:.4f}, "
-                f"N_paths={int(n_paths_eu)}, N_steps={int(n_steps_eu)}"
-            )
+        st.caption(
+            f"Paramètres utilisés pour le prix unique Monte Carlo : "
+            f"S0={common_spot_value:.4f}, K={common_strike_value:.4f}, "
+            f"T={common_maturity_value:.4f}, r={common_rate_value:.4f}, "
+            f"d={float(d_common):.4f}, σ={common_sigma_value:.4f}, "
+            f"N_paths={int(n_paths_eu)}, N_steps={int(n_steps_eu)}"
+        )
     
     with tab_american:
         st.header("Option américaine")
@@ -3399,6 +3481,7 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                 f"Calculer le prix américain L-S ({cpflag_am})",
                 key=_k("btn_price_am_ls"),
             ):
+                progress = st.progress(0)
                 try:
                     option_ls = Option(
                         s0=S0_common,
@@ -3407,15 +3490,19 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                         v0=v0_am,
                         call=(cpflag_am == "Call"),
                     )
+                    progress.progress(35)
                     price_ls = longstaff_schwartz_price(
                         option=option_ls,
                         process=process_am,
                         n_paths=int(n_paths_am),
                         n_steps=int(n_steps_am),
                     )
+                    progress.progress(75)
                     st.success(f"Prix américain Longstaff–Schwartz ({cpflag_am}) = {price_ls:.6f}")
                 except Exception as exc:
                     st.error(f"Erreur Longstaff–Schwartz : {exc}")
+                finally:
+                    progress.empty()
             st.caption(
                 f"Paramètres utilisés pour le prix unique L-S : "
                 f"S0={S0_common:.4f}, K={K_common:.4f}, T={T_common:.4f}, "
@@ -3433,6 +3520,7 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                     int(n_steps_am),
                     v0_am,
                 )
+            # Heatmap MC (GBM/Heston) – affichage selon le type Call/Put courant
             _render_heatmaps_for_current_option(
                 "Longstaff–Schwartz",
                 call_heatmap_ls,
@@ -3662,6 +3750,7 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                 "Calculer le prix lookback MC",
                 key=_k("btn_price_lb_mc"),
             ):
+                progress = st.progress(0)
                 try:
                     lookback_opt_mc = lookback_call_option(
                         T=float(T_common),
@@ -3670,16 +3759,21 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                         r=float(r_lb_mc),
                         sigma=float(sigma_common),
                     )
+                    progress.progress(40)
                     price_lb_mc = float(lookback_opt_mc.price_monte_carlo(int(n_iters_lb)))
+                    progress.progress(80)
                     st.success(f"Prix lookback (Monte Carlo) = {price_lb_mc:.6f}")
                 except Exception as exc:
                     st.error(f"Erreur lookback Monte Carlo : {exc}")
+                finally:
+                    progress.empty()
             st.caption(
                 f"Paramètres utilisés pour le prix lookback MC : "
                 f"S0={common_spot_value:.4f}, T={T_common:.4f}, r={r_lb_mc:.4f}, σ={sigma_common:.4f}, "
                 f"t={t0_lb_mc:.4f}, N_iters={int(n_iters_lb)}"
             )
             if st.checkbox("Afficher la heatmap Lookback (Monte Carlo)", value=False, key=_k("show_lb_mc_heatmap")):
+                progress = st.progress(0)
                 with st.spinner("Calcul de la heatmap Monte Carlo"):
                     heatmap_lb_mc = _compute_lookback_mc_heatmap(
                         heatmap_spot_values,
@@ -3689,8 +3783,10 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                         sigma_common,
                         int(n_iters_lb),
                     )
+                    progress.progress(100)
                 st.write("Heatmap Lookback (Monte Carlo)")
                 _render_heatmap(heatmap_lb_mc, heatmap_spot_values, heatmap_maturity_values, "Prix Lookback (MC)")
+                progress.empty()
     
     
     with tab_barrier:
@@ -3767,6 +3863,7 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
             )
 
             if st.button("Calculer (Up-and-out)", key=_k("btn_barrier_up")):
+                progress = st.progress(0)
                 with st.spinner("Simulation Monte Carlo en cours..."):
                     price = _barrier_monte_carlo_price(
                         option_type=cpflag_barrier_up_char,
@@ -3781,7 +3878,9 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                         n_paths=int(n_paths_up),
                         n_steps=int(n_steps_up),
                     )
+                    progress.progress(100)
                 st.write(f"**Prix Monte Carlo barrière**: {price:.6f}")
+                progress.empty()
     
             st.caption(f"Rappel : S0 = {S0_common:.4f}, Hu = {Hu_up:.4f}")
     
@@ -3839,6 +3938,7 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
             )
 
             if st.button("Calculer (Down-and-out)", key=_k("btn_barrier_down")):
+                progress = st.progress(0)
                 with st.spinner("Simulation Monte Carlo en cours..."):
                     price = _barrier_monte_carlo_price(
                         option_type=cpflag_barrier_down_char,
@@ -3853,8 +3953,10 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                         n_paths=int(n_paths_down),
                         n_steps=int(n_steps_down),
                     )
+                    progress.progress(100)
                 st.write(f"**Prix Monte Carlo barrière**: {price:.6f}")
-            
+                progress.empty()
+
             st.caption(f"Rappel : S0 = {S0_common:.4f}, Hd = {Hd_down:.4f}")
     
         with tab_barrier_up_in:
@@ -3914,6 +4016,7 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
             )
 
             if st.button("Calculer (Up-and-in)", key=_k("btn_barrier_up_in")):
+                progress = st.progress(0)
                 with st.spinner("Monte Carlo knock-in (Up)..."):
                     price = _barrier_monte_carlo_price(
                         option_type=cpflag_barrier_up_in_char,
@@ -3929,7 +4032,9 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                         n_steps=int(n_steps_up_in),
                         knock_in=True,
                     )
+                    progress.progress(100)
                 st.write(f"**Prix Monte Carlo knock-in**: {price:.6f}")
+                progress.empty()
     
             st.caption(f"Rappel : S0 = {S0_common:.4f}, Hu = {Hu_up_in:.4f}")
     
@@ -3984,6 +4089,7 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
             )
 
             if st.button("Calculer (Down-and-in)", key=_k("btn_barrier_down_in")):
+                progress = st.progress(0)
                 with st.spinner("Monte Carlo knock-in (Down)..."):
                     price = _barrier_monte_carlo_price(
                         option_type=cpflag_barrier_down_in_char,
@@ -3999,7 +4105,9 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                         n_steps=int(n_steps_down_in),
                         knock_in=True,
                     )
+                    progress.progress(100)
                 st.write(f"**Prix Monte Carlo knock-in**: {price:.6f}")
+                progress.empty()
     
     
     with tab_bermudan:
@@ -4116,6 +4224,7 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
             maturity_common=common_maturity_value,
             rate_common=common_rate_value,
             strike_common=common_strike_value,
+            key_prefix=f"basket_{option_label.lower()}",
         )
     
     
