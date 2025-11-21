@@ -18,6 +18,7 @@ SELL_SYSTEMS_FILE = "sell_systems.json"
 OPTIONS_PORTFOLIO_FILE = "options_portfolio.json"
 EXPIRED_OPTIONS_FILE = "expired_options.json"
 CUSTOM_OPTIONS_FILE = "custom_options.json"
+FORWARDS_FILE = "forwards.json"
 load_dotenv()
 
 # Alpaca API Setup
@@ -146,6 +147,19 @@ def load_custom_options():
 def save_custom_options(custom_options):
     with open(CUSTOM_OPTIONS_FILE, 'w') as f:
         json.dump(custom_options, f, indent=2)
+
+
+def load_forwards():
+    try:
+        with open(FORWARDS_FILE, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def save_forwards(forwards):
+    with open(FORWARDS_FILE, 'w') as f:
+        json.dump(forwards, f, indent=2)
 
 
 def floor_3(v: float) -> float:
@@ -757,8 +771,8 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊 Dashboard",
     "💰 Buy/Sell",
     "📋 Trading Systems",
-    "🧾 Options",
-    "📜 app_to_copy",
+    "📄 Forwards",
+    "📜 Options",
 ])
 
 # Tab 1: Dashboard
@@ -866,6 +880,47 @@ with tab1:
                 f"${total_pnl_with_expired:.2f}",
                 delta=f"{total_pnl_pct:.2f}%",
             )
+
+        # Forward portfolio section
+        st.markdown("---")
+        st.markdown("### 📂 Forward Portfolio")
+        forwards_dash = load_forwards()
+        if forwards_dash:
+            fwd_rows = []
+            today_dash = datetime.date.today()
+            for key, fwd in forwards_dash.items():
+                sym = fwd.get("symbol", "")
+                qty = int(fwd.get("quantity", 0) or 0)
+                price_fwd = float(fwd.get("forward_price", 0.0) or 0.0)
+                side = fwd.get("side", "long")
+                maturity_str = fwd.get("maturity")
+                try:
+                    maturity_dt = datetime.date.fromisoformat(maturity_str)
+                    days_to_mat = (maturity_dt - today_dash).days
+                except Exception:
+                    maturity_dt = None
+                    days_to_mat = None
+                spot_now = float(get_data(sym).get("price", 0.0) or 0.0) if sym else 0.0
+                mult = 1.0 if side == "long" else -1.0
+                pnl_unit = mult * (spot_now - price_fwd)
+                pnl_total = pnl_unit * qty
+                fwd_rows.append(
+                    {
+                        "Symbol": sym,
+                        "Side": side.capitalize(),
+                        "Quantity": qty,
+                        "Forward Price": price_fwd,
+                        "Spot Now": round(spot_now, 4),
+                        "Maturity": maturity_str,
+                        "Days to mat": days_to_mat,
+                        "P&L/unit": round(pnl_unit, 4),
+                        "P&L total": round(pnl_total, 2),
+                    }
+                )
+            df_fwds = pd.DataFrame(fwd_rows)
+            st.dataframe(df_fwds, width="stretch", hide_index=True)
+        else:
+            st.info("No forward positions yet.")
 
         # Options portfolio section
         st.markdown("---")
@@ -1559,345 +1614,133 @@ with tab3:
     else:
         st.info("No trading systems configured yet. Add an equity above to get started.")
 
-# Tab 4: Options
+# Tab 4: Forwards
 with tab4:
-    with st.expander("📘 Comprendre Options"):
-        st.markdown("""
-        ### 🧾 Ce que vous faites dans Options
-        
-        Cet onglet vous permet d’explorer les **options européennes CBOE** sur un sous-jacent donné,
-        puis de prendre des positions longues (achat d’options) ou courtes (vente d’options) sur un contrat précis.
-        
-        L’idée est d’ajouter un outil complémentaire aux actions : vous pouvez exprimer une vue directionnelle avec effet de levier,
-        couvrir une position cash, ou structurer des paris plus fins (proches/loin du money, courts ou longs termes).
-        
-        Le flux de travail est le suivant :
-        1. Vous saisissez un **ticker sous-jacent** (ex: AAPL) et chargez la chaîne d’options depuis CBOE
-        2. Vous choisissez une **maturité T** (en années) parmi celles réellement cotées
-        3. Vous basculez entre les onglets **Call** et **Put**
-        4. Pour chaque type, vous choisissez un **strike K** via un curseur; les pastilles en dessous résument Spot, T, K, Prix, IV
-        5. Vous choisissez si vous voulez être **Long** ou **Short**, la quantité et le prix, puis vous enregistrez la position
-        
-        Toutes vos positions d’options sont ensuite visibles dans la section *Options Portfolio* du Dashboard,
-        avec le sens (Long/Short) clairement indiqué. Cela vous permet de relier en permanence dérivés et portefeuille cash.
-        """)
+    with st.expander("📘 Comprendre Forwards"):
+        st.markdown(
+            """
+            ### 📄 Ce que vous faites dans Forwards
+            
+            Cet onglet vous permet d'**acheter (ou vendre) un forward** sur un sous-jacent : vous fixez aujourd'hui un prix d'échange futur.
+            
+            - Vous choisissez le sous-jacent, la date d'échéance, le sens (long/short) et le prix forward.
+            - Le forward est enregistré dans un fichier JSON (`forwards.json`).
+            - Il apparaît ensuite dans le Dashboard avec P&L mark-to-market basé sur le prix spot actuel.
+            
+            Un **long forward** gagne lorsque le prix spot est au-dessus du prix forward à l'échéance; un **short forward** gagne dans le cas inverse.
+            """
+        )
 
-    st.subheader("🧾 Trade Options (European)")
+    st.subheader("🧾 Trade Forward")
 
-    underlying_symbol = st.text_input(
-        "Underlying symbol for options",
+    fwd_symbol = st.text_input(
+        "Underlying symbol",
         placeholder="e.g., AAPL",
-        key="opt_underlying",
+        key="fwd_symbol",
     ).upper()
 
-    if "options_chain" not in st.session_state:
-        st.session_state.options_chain = []
+    today = datetime.date.today()
+    default_maturity = today + datetime.timedelta(days=30)
+    fwd_maturity = st.date_input(
+        "Maturity date",
+        value=default_maturity,
+        min_value=today,
+        key="fwd_maturity",
+    )
 
-    if underlying_symbol:
-        if st.button("🔍 Load European options chain", key="load_options_chain"):
-            st.session_state.options_chain = fetch_options_chain(underlying_symbol)
+    fwd_qty = st.number_input(
+        "Notional (units)",
+        min_value=1,
+        value=1,
+        step=1,
+        key="fwd_qty",
+    )
 
-    options_chain = st.session_state.options_chain
+    price_data = get_data(fwd_symbol) if fwd_symbol else {"price": 0}
+    default_price = float(price_data.get("price", 0.0) or 0.0)
+    fwd_price = st.number_input(
+        "Forward price",
+        min_value=0.0,
+        value=default_price,
+        step=0.01,
+        key="fwd_price",
+        help="Prix auquel vous acceptez d'acheter/vendre le sous-jacent à l'échéance.",
+    )
 
-    # Filter chain to current underlying only
-    filtered_chain = [
-        c for c in options_chain
-        if str(c.get("underlying", "")).upper() == underlying_symbol.upper()
-    ] if underlying_symbol and options_chain else []
+    fwd_side_label = st.radio(
+        "Position",
+        options=["Long forward", "Short forward"],
+        horizontal=True,
+        key="fwd_side",
+    )
+    fwd_side = "long" if fwd_side_label.startswith("Long") else "short"
 
-    if underlying_symbol and filtered_chain:
-        # Step 1: choose maturity T (years) with a selectbox (unique T values > 0, rounded to 2 decimals)
-        unique_T_values = sorted({
-            round(float(c["T"]), 2)
-            for c in filtered_chain
-            if float(c.get("T", 0.0) or 0.0) > 0
-        })
-
-        if unique_T_values:
-            display_T_values = [f"{t:.2f}" for t in unique_T_values]
-            selected_T_display = st.selectbox(
-                "Select maturity T (years)",
-                options=display_T_values,
-                key="opt_selected_T",
-            )
-            try:
-                selected_T = float(selected_T_display)
-            except ValueError:
-                selected_T = None
+    if st.button("Enregistrer le forward", type="primary", key="btn_save_forward"):
+        if fwd_symbol and fwd_price > 0:
+            forwards = load_forwards()
+            uid = f"{fwd_symbol}_{fwd_maturity.isoformat()}_{int(time.time())}"
+            forwards[uid] = {
+                "symbol": fwd_symbol,
+                "maturity": fwd_maturity.isoformat(),
+                "forward_price": round(float(fwd_price), 4),
+                "quantity": int(fwd_qty),
+                "side": fwd_side,
+                "created_at": time.strftime('%Y-%m-%d %H:%M:%S'),
+                "spot_at_trade": round(default_price, 4),
+            }
+            save_forwards(forwards)
+            st.success(f"Forward {fwd_side.upper()} sur {fwd_symbol} enregistré pour {fwd_maturity} à {fwd_price:.4f}.")
+            time.sleep(1)
+            st.rerun()
         else:
-            selected_T = None
+            st.error("Renseigne un symbole et un prix forward strictement positif.")
 
-        if selected_T is not None:
-            filtered_by_T = [
-                c for c in filtered_chain if round(c["T"], 2) == round(selected_T, 2)
-            ]
+    st.markdown("---")
+    st.markdown("### 📂 Forward Portfolio")
+    forwards = load_forwards()
+    if forwards:
+        rows = []
+        for key, fwd in forwards.items():
+            sym = fwd.get("symbol", "")
+            qty = int(fwd.get("quantity", 0) or 0)
+            price_fwd = float(fwd.get("forward_price", 0.0) or 0.0)
+            side = fwd.get("side", "long")
+            maturity_str = fwd.get("maturity")
+            try:
+                maturity_dt = datetime.date.fromisoformat(maturity_str)
+            except Exception:
+                maturity_dt = None
+            days_to_mat = (maturity_dt - today).days if maturity_dt else None
+            spot_now = float(get_data(sym).get("price", 0.0) or 0.0) if sym else 0.0
+            mult = 1.0 if side == "long" else -1.0
+            pnl_unit = mult * (spot_now - price_fwd)
+            pnl_total = pnl_unit * qty
+            rows.append({
+                "Symbol": sym,
+                "Side": side.capitalize(),
+                "Quantity": qty,
+                "Forward Price": price_fwd,
+                "Spot Now": round(spot_now, 4),
+                "Maturity": maturity_str,
+                "Days to mat": days_to_mat,
+                "P&L/unit": round(pnl_unit, 4),
+                "P&L total": round(pnl_total, 2),
+            })
+        if rows:
+            df_fwd = pd.DataFrame(rows)
+            st.dataframe(df_fwd, width="stretch", hide_index=True)
+        if st.button("🧹 Clear forwards", key="clear_forwards"):
+            save_forwards({})
+            st.success("Forward portfolio cleared.")
+            time.sleep(1)
+            st.rerun()
+    else:
+        st.info("Aucun forward pour le moment.")
 
-            if filtered_by_T:
-                st.markdown("#### Select strike (K) for chosen T")
-
-                tab_call, tab_put = st.tabs(["Call", "Put"])
-
-                # Calls tab
-                with tab_call:
-                    calls_for_T = [c for c in filtered_by_T if c["type"] == "call"]
-                    if not calls_for_T:
-                        st.info("No call options for this maturity.")
-                    else:
-                        unique_K_call = sorted({float(c["strike"]) for c in calls_for_T})
-                        if unique_K_call:
-                            # Slider directly on K values (label shows K)
-                            min_k_call = float(min(unique_K_call))
-                            max_k_call = float(max(unique_K_call))
-                            if len(unique_K_call) > 1:
-                                diffs_call = [
-                                    b - a for a, b in zip(unique_K_call[:-1], unique_K_call[1:])
-                                ]
-                                step_call = min(diffs_call)
-                            else:
-                                step_call = 1.0
-
-                            default_k_call = unique_K_call[min(
-                                len(unique_K_call) // 2, len(unique_K_call) - 1
-                            )]
-
-                            selected_k_value_call = st.slider(
-                                "Strike (K) - Call",
-                                min_value=min_k_call,
-                                max_value=max_k_call,
-                                value=float(default_k_call),
-                                step=float(step_call),
-                                format="%.2f",
-                                key="opt_call_strike",
-                            )
-
-                            # Map chosen K to nearest available strike
-                            selected_K_call = min(
-                                unique_K_call,
-                                key=lambda k: abs(k - selected_k_value_call),
-                            )
-                            selected_call = next(
-                                (c for c in calls_for_T if c["strike"] == selected_K_call),
-                                None,
-                            )
-
-                            if selected_call:
-                                spot_call = float(selected_call.get("spot", 0.0) or 0.0)
-                                chips_html_call = f"""
-                                <div style='display:flex;flex-wrap:wrap;gap:0.6rem;margin-top:0.6rem;'>
-                                  <span style='background-color:#e3f2fd;color:#0d47a1;padding:6px 14px;border-radius:999px;font-size:0.9rem;font-weight:600;'>Call</span>
-                                  <span style='background-color:#fffde7;color:#f57f17;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>Spot = {spot_call:.3f}</span>
-                                  <span style='background-color:#e8f5e9;color:#1b5e20;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>T = {selected_call['T']:.3f}</span>
-                                  <span style='background-color:#fff3e0;color:#e65100;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>K = {selected_call['strike']:.3f}</span>
-                                  <span style='background-color:#f3e5f5;color:#4a148c;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>Price = {selected_call['price']:.3f}</span>
-                                  <span style='background-color:#fce4ec;color:#880e4f;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>IV = {selected_call['iv']:.2f}</span>
-                                </div>
-                                """
-                                st.markdown(chips_html_call, unsafe_allow_html=True)
-
-                                side_call = st.radio(
-                                    "Position side",
-                                    options=["Long", "Short"],
-                                    horizontal=True,
-                                    key="opt_side_call",
-                                )
-                                style_call = st.selectbox(
-                                    "Type d'option",
-                                    options=["Européenne", "Américaine", "Autre"],
-                                    index=0,
-                                    key="opt_style_call",
-                                )
-                                qty_call = st.number_input(
-                                    "Quantity (contracts)",
-                                    min_value=1,
-                                    value=1,
-                                    step=1,
-                                    key="opt_qty_call",
-                                )
-                                price_call = float(selected_call.get("price", 0.0) or 0.0)
-                                st.caption(f"Trade price (from CBOE): ${price_call:.3f}")
-
-                                if st.button(
-                                    "✅ Execute Call Trade",
-                                    type="primary",
-                                    key="exec_option_call",
-                                ):
-                                    result = trade_option_contract(
-                                        contract_symbol=selected_call["symbol"],
-                                        underlying_symbol=selected_call.get("underlying"),
-                                        option_type=selected_call.get("type"),
-                                        strike=selected_call.get("strike"),
-                                        expiration=selected_call.get("expiration"),
-                                        side=side_call.lower(),
-                                        quantity=int(qty_call),
-                                        price=float(price_call),
-                                        spot_at_trade=spot_call,
-                                    )
-                                    if result:
-                                        st.success(
-                                            f"{side_call} {qty_call}x {selected_call['symbol']} "
-                                            f"@ {price_call:.3f} recorded in options portfolio."
-                                        )
-                                    else:
-                                        st.success("Option position updated / closed.")
-
-                                if st.button(
-                                    "🛒 Acheter cette option (liste custom)",
-                                    type="secondary",
-                                    key="buy_custom_call",
-                                ):
-                                    custom_options = load_custom_options()
-                                    unique_key = f"{selected_call['symbol']}_{int(time.time())}"
-                                    custom_options[unique_key] = {
-                                        "symbol": selected_call["symbol"],
-                                        "underlying": selected_call.get("underlying"),
-                                        "type": selected_call.get("type"),
-                                        "style": style_call,
-                                        "side": side_call.lower(),
-                                        "strike": selected_call.get("strike"),
-                                        "expiration": selected_call.get("expiration"),
-                                        "quantity": int(qty_call),
-                                        "avg_price": floor_3(price_call),
-                                        "S0": floor_3(spot_call),
-                                    }
-                                    save_custom_options(custom_options)
-                                    st.success(
-                                        f"Ajouté à la liste custom: {style_call} {side_call} "
-                                        f"{qty_call}x {selected_call['symbol']} @ {price_call:.3f}"
-                                    )
-
-                # Puts tab
-                with tab_put:
-                    puts_for_T = [c for c in filtered_by_T if c["type"] == "put"]
-                    if not puts_for_T:
-                        st.info("No put options for this maturity.")
-                    else:
-                        unique_K_put = sorted({float(c["strike"]) for c in puts_for_T})
-                        if unique_K_put:
-                            min_k_put = float(min(unique_K_put))
-                            max_k_put = float(max(unique_K_put))
-                            if len(unique_K_put) > 1:
-                                diffs_put = [
-                                    b - a for a, b in zip(unique_K_put[:-1], unique_K_put[1:])
-                                ]
-                                step_put = min(diffs_put)
-                            else:
-                                step_put = 1.0
-
-                            default_k_put = unique_K_put[min(
-                                len(unique_K_put) // 2, len(unique_K_put) - 1
-                            )]
-
-                            selected_k_value_put = st.slider(
-                                "Strike (K) - Put",
-                                min_value=min_k_put,
-                                max_value=max_k_put,
-                                value=float(default_k_put),
-                                step=float(step_put),
-                                format="%.2f",
-                                key="opt_put_strike",
-                            )
-
-                            selected_K_put = min(
-                                unique_K_put,
-                                key=lambda k: abs(k - selected_k_value_put),
-                            )
-                            selected_put = next(
-                                (c for c in puts_for_T if c["strike"] == selected_K_put),
-                                None,
-                            )
-
-                            if selected_put:
-                                spot_put = float(selected_put.get("spot", 0.0) or 0.0)
-                                chips_html_put = f"""
-                                <div style='display:flex;flex-wrap:wrap;gap:0.6rem;margin-top:0.6rem;'>
-                                  <span style='background-color:#ffebee;color:#b71c1c;padding:6px 14px;border-radius:999px;font-size:0.9rem;font-weight:600;'>Put</span>
-                                  <span style='background-color:#fffde7;color:#f57f17;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>Spot = {spot_put:.3f}</span>
-                                  <span style='background-color:#e8f5e9;color:#1b5e20;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>T = {selected_put['T']:.3f}</span>
-                                  <span style='background-color:#fff3e0;color:#e65100;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>K = {selected_put['strike']:.3f}</span>
-                                  <span style='background-color:#ede7f6;color:#311b92;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>Price = {selected_put['price']:.3f}</span>
-                                  <span style='background-color:#e0f7fa;color:#006064;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>IV = {selected_put['iv']:.2f}</span>
-                                </div>
-                                """
-                                st.markdown(chips_html_put, unsafe_allow_html=True)
-
-                                side_put = st.radio(
-                                    "Position side",
-                                    options=["Long", "Short"],
-                                    horizontal=True,
-                                    key="opt_side_put",
-                                )
-                                style_put = st.selectbox(
-                                    "Type d'option",
-                                    options=["Européenne", "Américaine", "Autre"],
-                                    index=0,
-                                    key="opt_style_put",
-                                )
-                                qty_put = st.number_input(
-                                    "Quantity (contracts)",
-                                    min_value=1,
-                                    value=1,
-                                    step=1,
-                                    key="opt_qty_put",
-                                )
-                                price_put = float(selected_put.get("price", 0.0) or 0.0)
-                                st.caption(f"Trade price (from CBOE): ${price_put:.3f}")
-
-                                if st.button(
-                                    "✅ Execute Put Trade",
-                                    type="primary",
-                                    key="exec_option_put",
-                                ):
-                                    result = trade_option_contract(
-                                        contract_symbol=selected_put["symbol"],
-                                        underlying_symbol=selected_put.get("underlying"),
-                                        option_type=selected_put.get("type"),
-                                        strike=selected_put.get("strike"),
-                                        expiration=selected_put.get("expiration"),
-                                        side=side_put.lower(),
-                                        quantity=int(qty_put),
-                                        price=float(price_put),
-                                        spot_at_trade=spot_put,
-                                    )
-                                    if result:
-                                        st.success(
-                                            f"{side_put} {qty_put}x {selected_put['symbol']} "
-                                            f"@ {price_put:.3f} recorded in options portfolio."
-                                        )
-                                    else:
-                                        st.success("Option position updated / closed.")
-
-                                if st.button(
-                                    "🛒 Acheter cette option (liste custom)",
-                                    type="secondary",
-                                    key="buy_custom_put",
-                                ):
-                                    custom_options = load_custom_options()
-                                    unique_key = f"{selected_put['symbol']}_{int(time.time())}"
-                                    custom_options[unique_key] = {
-                                        "symbol": selected_put["symbol"],
-                                        "underlying": selected_put.get("underlying"),
-                                        "type": selected_put.get("type"),
-                                        "style": style_put,
-                                        "side": side_put.lower(),
-                                        "strike": selected_put.get("strike"),
-                                        "expiration": selected_put.get("expiration"),
-                                        "quantity": int(qty_put),
-                                        "avg_price": floor_3(price_put),
-                                        "S0": floor_3(spot_put),
-                                    }
-                                    save_custom_options(custom_options)
-                                    st.success(
-                                        f"Ajouté à la liste custom: {style_put} {side_put} "
-                                        f"{qty_put}x {selected_put['symbol']} @ {price_put:.3f}"
-                                    )
-
-    elif underlying_symbol and not filtered_chain:
-        st.info("No European options found or failed to load chain for this symbol.")
-
-# Tab 5: app_to_copy (copie intégrale)
+# Tab 5: app_options (copie intégrale)
 with tab5:
     with st.spinner("Chargement de la copie intégrale..."):
-        runpy.run_path("app_to_copy.py", run_name="__app_to_copy__")
+        runpy.run_path("app_options.py", run_name="__app_options__")
 
 # Footer
 st.markdown("---")
