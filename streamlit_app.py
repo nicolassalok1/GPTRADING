@@ -213,6 +213,62 @@ def place_limit_order(symbol, price):
 st.title("📈 AI Trading Bot")
 st.markdown("---")
 
+with st.expander("📘 Tutoriel d'utilisation de l'outil"):
+    st.markdown("""
+    ### 📘 Mise en situation : ce que vous essayez de faire
+    
+    Imaginez que vous êtes un investisseur particulier qui en a assez de trader "au feeling" : 
+    vous voulez arrêter de courir après le marché, structurer vos décisions et savoir exactement 
+    pourquoi vous entrez, renforcez ou sortez d'une position.
+    
+    Cet outil est là pour vous aider à **transformer votre trading en processus**. 
+    Vous cherchez principalement à optimiser trois choses :
+    
+    - **Votre risque** : limiter la profondeur des pertes (drawdown) que vous êtes prêt à accepter
+    - **Votre prix moyen d'entrée** : profiter des baisses pour améliorer vos points d'achat au lieu de paniquer
+    - **Votre temps et votre charge mentale** : automatiser ce qui peut l'être, et garder votre énergie pour les décisions importantes
+    
+    L'idée n'est pas de prédire le futur, mais de mettre un cadre autour de votre comportement : 
+    ouvrir l'application, voir en quelques secondes si tout est sous contrôle, puis décider calmement 
+    s'il y a une action à prendre aujourd'hui ou non.
+    
+    ---
+    
+    ### 🧭 Comment lire l'application
+    
+    L'application est construite comme un **parcours logique de trader discipliné** :
+    
+    1. Vous **observez** votre situation (ce que vous possédez, comment ça évolue, ce que vos systèmes ont fait)
+    2. Vous **décidez** où mettre du capital, ce que vous voulez renforcer ou alléger
+    3. Vous **exécutez** des ordres manuels quand vous voulez intervenir directement
+    4. Vous **automatisez** certaines parties de votre stratégie avec des systèmes basés sur le drawdown et des niveaux de prix
+    5. Vous **analysez** avec l'IA pour challenger vos idées, comprendre vos risques et clarifier votre stratégie
+    
+    Chaque onglet correspond à une étape de ce parcours. 
+    Dans les sections "📚 Comment utiliser ..." au bas de chaque onglet, 
+    vous trouverez une explication détaillée de **ce que vous êtes en train d'y faire** 
+    (qu'est-ce que vous optimisez, quels sont les enjeux, où se situe la difficulté mentale).
+    
+    ---
+    
+    ### 🎯 Comment bien démarrer
+    
+    Pour une première utilisation, vous pouvez suivre ce mini-scénario :
+    
+    1. Ouvrez l'application et prenez un moment pour comprendre que le but n'est pas de "trader plus", 
+       mais de **trader mieux, avec un plan**.
+    2. Allez ensuite dans chaque onglet, l'un après l'autre, sans forcément passer d'ordres au début :
+       contentez-vous de lire le texte d'aide en bas de page et de repérer les boutons qui déclenchent de vraies actions.
+    3. Quand vous vous sentez à l'aise, commencez petit : 
+       un premier achat manuel, un premier système Add Equity, une première question à l'IA.
+    4. Revenez quelques jours plus tard pour voir ce qui s'est passé : 
+       avez-vous respecté votre plan ? vos systèmes ont-ils réagi comme prévu ? qu'avez-vous appris ?
+    
+    Utilisé de cette manière, cet outil devient **un cadre d'apprentissage et d'optimisation** : 
+    à chaque utilisation, vous comprenez un peu mieux votre propre comportement de trader, 
+    et vous ajustez votre manière d'investir pour qu'elle soit plus cohérente, plus sereine et plus alignée avec votre tolérance au risque.
+    """)
+
 # Sidebar
 with st.sidebar:
     st.header("⚙️ Settings")
@@ -227,6 +283,31 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Dashboard", "💰 Buy/Sell", "➕ 
 
 # Tab 1: Dashboard
 with tab1:
+    with st.expander("📘 Comprendre le Dashboard"):
+        st.markdown("""
+        ### 📊 Ce que vous faites dans le Dashboard
+        
+        Dans cet onglet, vous vérifiez **où en est votre argent** en un coup d'œil.
+        L'idée est simple : avant de prendre une décision, vous regardez la photo globale de votre portfolio.
+        
+        Le tableau *My Portfolio* vous montre chaque ligne : symbole, quantité, prix moyen payé,
+        prix actuel, valeur de la position et P&L. C'est ici que vous voyez immédiatement
+        quelles positions tirent le portfolio vers le haut ou vers le bas.
+        
+        La métrique *Total Portfolio Value* vous donne la taille totale de votre capital investi.
+        Vous pouvez l'utiliser comme point de repère jour après jour pour suivre l'évolution globale.
+        
+        La section *Configured Trading Systems* vous rappelle en un clin d'œil
+        quels systèmes automatiques sont en place, sur quels actifs, avec quel drawdown
+        et combien de niveaux sont définis. Vous voyez aussi rapidement leur statut (On/Off).
+        
+        La zone *Quick Remove* sert à faire du ménage : si un système ne vous convient plus,
+        vous pouvez le supprimer en un clic sans aller dans d'autres onglets.
+        
+        La bonne pratique ici est de commencer chaque session par ce Dashboard :
+        repérez les mouvements extrêmes, les positions trop lourdes ou les systèmes
+        dont vous ne comprenez plus la logique, avant d'aller agir dans les autres onglets.
+        """)
     st.subheader("💰 My Portfolio")
     my_portfolio = load_portfolio()
     
@@ -290,42 +371,37 @@ with tab1:
                     st.rerun()
     else:
         st.info("No trading systems configured. Add an equity in the 'Add Equity' tab.")
-    
-    # Footer
-    st.markdown("---")
-    st.markdown("""
-    ### 📚 Comment utiliser le Dashboard
-    
-    Le **Dashboard** est votre tableau de bord principal. C'est ici que vous visualisez l'état global de vos investissements.
-    
-    **Section "My Portfolio"** : Cette section affiche tous les actifs que vous possédez actuellement. Pour chaque position, 
-    vous pouvez voir combien d'actions vous détenez, à quel prix moyen vous les avez achetées, leur prix actuel sur le marché, 
-    et surtout votre gain ou perte (P&L). Le P&L vous indique si vous êtes en profit (positif) ou en perte (négatif) sur chaque investissement.
-    
-    **Section "Configured Trading Systems"** : Ici se trouvent les systèmes de trading automatisés que vous avez configurés. 
-    Chaque système surveille un actif spécifique et peut exécuter des ordres automatiquement selon vos paramètres. 
-    Vous pouvez rapidement supprimer un système avec les boutons 🗑️.
-    
-    ---
-    
-    #### 🎯 But de l'opération
-    Le Dashboard est votre **centre de contrôle** pour surveiller la santé financière de votre portfolio. L'objectif est de vous donner 
-    une vision instantanée de votre situation : Êtes-vous en profit global ? Quels actifs performent bien ou mal ? Combien valez-vous actuellement ?
-    
-    #### ⚖️ Les enjeux
-    - **Visibilité totale** : Voir d'un coup d'œil si votre stratégie d'investissement fonctionne
-    - **Détection rapide** : Identifier rapidement les positions problématiques (grosses pertes) ou gagnantes
-    - **Contrôle des systèmes** : Surveiller quels systèmes automatisés sont actifs et peuvent trader pour vous
-    - **Prise de décision** : Avoir toutes les informations nécessaires avant de modifier votre stratégie
-    
-    #### 💪 La difficulté
-    La vraie difficulté n'est pas technique mais **psychologique** : il faut apprendre à regarder objectivement les chiffres, surtout les pertes, 
-    sans panique ni euphorie. Un bon trader consulte son dashboard régulièrement mais ne prend pas de décisions impulsives. 
-    Les marchés fluctuent constamment - ce qui compte c'est la tendance long terme, pas les variations quotidiennes.
-    """)
 
 # Tab 2: Buy/Sell
 with tab2:
+    with st.expander("📘 Comprendre Buy/Sell"):
+        st.markdown("""
+        ### 💰 Ce que vous faites dans Buy/Sell
+        
+        Cet onglet est votre **outil d'exécution manuelle** : c'est ici que vous décidez
+        consciemment d'entrer ou de sortir d'une position, en contrôlant précisément prix et quantité.
+        
+        Le bloc *Buy Asset* vous sert à ouvrir ou renforcer une position.
+        Vous indiquez le symbole, le nombre d'unités que vous voulez acheter,
+        puis vous validez ou ajustez le prix proposé en fonction du marché.
+        
+        L'application calcule pour vous le **coût total** de l'opération,
+        ce qui vous évite de faire les calculs de tête et vous aide à rester conscient
+        du capital réellement engagé sur chaque trade.
+        
+        Le bloc *Sell Asset* est l'équivalent côté sorties : vous sélectionnez
+        une position existante, choisissez combien d'unités vendre et,
+        en fonction du prix de vente, vous voyez immédiatement le P&L associé.
+        
+        Utilisez cet onglet quand vous voulez **reprendre la main** sur une position :
+        prendre vos profits, couper une perte, ou ajuster la taille d'un trade
+        indépendamment de ce que font vos systèmes automatiques.
+        
+        La bonne habitude est de toujours regarder le P&L, le pourcentage
+        et l'impact sur votre capital global avant de cliquer sur *Execute* :
+        cela vous aide à prendre des décisions moins impulsives et plus alignées
+        avec votre plan global de gestion du risque.
+        """)
     st.subheader("💰 Buy/Sell Assets")
     
     col1, col2 = st.columns(2)
@@ -389,48 +465,38 @@ with tab2:
                     st.error(f"Could not fetch price for {sell_symbol}")
         else:
             st.info("No assets in portfolio to sell")
-    
-    # Footer
-    st.markdown("---")
-    st.markdown("""
-    ### 📚 Comment utiliser Buy/Sell
-    
-    Cet onglet vous permet d'acheter et de vendre des actifs pour construire et gérer votre portfolio personnel.
-    
-    **📈 Buy Asset (Acheter)** : À gauche, vous pouvez acheter des actions. Entrez simplement le symbole boursier 
-    (par exemple AAPL pour Apple, TSLA pour Tesla), choisissez la quantité, et confirmez le prix d'achat. 
-    L'application calcule automatiquement le coût total de votre transaction. Si vous achetez plusieurs fois le même actif, 
-    le système calcule automatiquement votre prix moyen d'achat.
-    
-    **📉 Sell Asset (Vendre)** : À droite, vous pouvez vendre les actifs que vous possédez déjà. Sélectionnez l'actif 
-    dans la liste déroulante, choisissez combien d'actions vous voulez vendre, et le système calculera automatiquement 
-    votre profit ou perte sur cette vente. C'est un excellent moyen de réaliser vos gains ou de limiter vos pertes.
-    
-    💡 **Astuce** : Gardez toujours un œil sur le P&L (Profit & Loss) avant de vendre pour prendre des décisions éclairées !
-    
-    ---
-    
-    #### 🎯 But de l'opération
-    Vous êtes en train de **construire et gérer activement votre patrimoine financier**. Chaque achat est un pari sur l'avenir d'une entreprise 
-    ou d'un actif. L'objectif est d'acheter à un prix que vous jugez intéressant et de vendre plus cher pour réaliser un profit. 
-    C'est comme gérer une collection : vous achetez ce qui a de la valeur et vous vendez quand le prix est bon.
-    
-    #### ⚖️ Les enjeux
-    - **Capital limité** : Chaque euro investi ici ne peut pas être investi ailleurs. Il faut choisir judicieusement.
-    - **Timing** : Acheter trop cher ou vendre trop tôt peut transformer un bon investissement en perte
-    - **Diversification** : Mettre tout son argent sur un seul actif est risqué. Il faut répartir intelligemment.
-    - **Émotions** : L'avidité pousse à acheter quand tout monte (souvent trop cher), la peur pousse à vendre quand tout baisse (souvent trop tôt)
-    
-    #### 💪 La difficulté
-    Le plus difficile est de **rester discipliné et rationnel**. Quand vous voyez un actif monter de 50%, l'envie de vendre pour sécuriser 
-    le gain est forte. Mais parfois, il monte encore de 100% après ! À l'inverse, quand vous êtes à -20%, la panique vous pousse à vendre 
-    pour limiter les dégâts, mais parfois c'est juste avant la remontée. La vraie difficulté est d'avoir un **plan clair avant d'acheter** : 
-    "Je vends si ça monte à X% ou si ça baisse à Y%", et de s'y tenir quoi qu'il arrive. Sans plan, vous tradez avec vos émotions, 
-    et les marchés punissent sévèrement les décisions émotionnelles.
-    """)
 
 # Tab 3: Add Equity
 with tab3:
+    with st.expander("📘 Comprendre Add Equity"):
+        st.markdown("""
+        ### ➕ Ce que vous faites dans Add Equity
+        
+        Ici, vous ne passez pas d'ordres immédiats : vous **concevez des systèmes automatiques**
+        qui vont acheter pour vous selon une logique de drawdown et de niveaux de prix.
+        
+        Le champ *Symbol* sert à choisir l'actif que vous voulez suivre
+        de façon structurée (indice, action, ETF, crypto, etc.).
+        
+        *Number of Levels* définit combien de paliers d'achat vous voulez.
+        Chaque niveau correspondra à un prix plus bas, où le système achètera
+        automatiquement une unité supplémentaire lorsque le marché corrigera.
+        
+        *Drawdown %* contrôle l'écart entre ces niveaux de prix :
+        un pourcentage faible donnera des niveaux proches les uns des autres,
+        un pourcentage plus élevé espacera davantage les achats.
+        
+        Quand vous cliquez sur *Add Equity*, l'outil calcule les niveaux
+        à partir du prix actuel et enregistre un système en mode *Off* par défaut,
+        que vous pourrez ensuite activer et superviser dans l'onglet *Trading Systems*.
+        
+        Utilisez cet onglet pour **planifier à l'avance** comment vous voulez acheter
+        pendant les baisses, plutôt que d'improviser dans la panique quand le marché chute.
+        
+        Avant de valider, demandez-vous toujours si vous êtes à l'aise
+        avec le nombre de niveaux, le drawdown choisi et le capital total
+        que cela représentera si tous les niveaux sont déclenchés.
+        """)
     st.subheader("➕ Add New Equity")
     
     # Check current count
@@ -487,55 +553,34 @@ with tab3:
                         st.error(f"Could not fetch price for {symbol}")
             else:
                 st.error("Please enter a symbol")
-    
-    # Footer
-    st.markdown("---")
-    st.markdown("""
-    ### 📚 Comment utiliser Add Equity
-    
-    Cet onglet vous permet de **configurer des systèmes de trading automatisés** pour surveiller et trader des actifs spécifiques.
-    
-    **Configuration d'un système** : Entrez le symbole de l'actif que vous souhaitez trader (ex: SPY, MSFT, BTC), 
-    puis définissez deux paramètres clés :
-    
-    - **Number of Levels (Nombre de niveaux)** : C'est le nombre de paliers de prix auxquels vous voulez acheter automatiquement. 
-      Plus il y a de niveaux, plus votre système achètera à des prix différents.
-    
-    - **Drawdown % (Pourcentage de baisse)** : C'est l'écart de prix entre chaque niveau. Par exemple, avec un drawdown de 5%, 
-      si le prix d'entrée est 100€, le niveau 1 sera à 95€, le niveau 2 à 90€, etc. Cela vous permet d'acheter progressivement 
-      quand le prix baisse, réduisant ainsi votre prix moyen d'achat.
-    
-    ⚠️ **Limite** : Vous ne pouvez configurer que 10 systèmes maximum pour garder votre stratégie gérable et claire.
-    
-    💡 **Conseil** : Commencez avec un petit drawdown (2-3%) pour les actifs volatils, et un plus grand (5-10%) pour les actifs stables.
-    
-    ---
-    
-    #### 🎯 But de l'opération
-    Vous êtes en train de mettre en place une **stratégie d'achat automatisée et disciplinée** appelée "Dollar Cost Averaging" (DCA) ou 
-    "moyennage du prix d'achat". Au lieu d'investir tout votre capital d'un coup (risque de mal timer le marché), vous achetez petit à petit 
-    à des prix décroissants. Si le marché baisse, vous accumulez plus d'actions à meilleur prix. Si ça remonte ensuite, vous êtes rentable 
-    plus rapidement car votre prix moyen est bas. C'est une stratégie défensive qui transforme les baisses de marché en opportunités.
-    
-    #### ⚖️ Les enjeux
-    - **Automatisation vs Contrôle** : Vous déléguez les décisions d'achat au système. Ça élimine les émotions mais nécessite une configuration réfléchie
-    - **Capital requis** : Chaque niveau = un achat. 5 niveaux = potentiellement 5 achats. Assurez-vous d'avoir le capital nécessaire
-    - **Choix du drawdown** : Trop petit (1-2%) = vous achetez souvent, peut-être trop tôt. Trop grand (10-15%) = vous ratez des opportunités
-    - **Sélection des actifs** : Tous les actifs ne se valent pas. Un système DCA sur un actif en déclin permanent = pertes continues
-    
-    #### 💪 La difficulté
-    La difficulté principale est de **calibrer correctement les paramètres** selon la volatilité de l'actif. Un actif stable comme SPY (S&P 500) 
-    peut supporter un drawdown de 5-7% car il bouge lentement. Mais une crypto volatile comme BTC pourrait nécessiter 10-15% car elle peut 
-    facilement faire -20% en une semaine. Si votre drawdown est trop petit, vous épuiserez tous vos niveaux rapidement sans avoir profité 
-    des vraies occasions. Si c'est trop grand, les niveaux ne se déclencheront jamais et vous ne profiterez pas des petites baisses.
-    
-    Il faut aussi accepter psychologiquement de **voir son portfolio en rouge temporairement**. Un système DCA est conçu pour acheter en baisse, 
-    donc par définition, après chaque achat, vous êtes souvent en perte papier. C'est normal et voulu ! La stratégie parie sur un retour 
-    à la hausse à moyen terme. Si vous paniquez et désactivez tout au premier -10%, vous transformez des pertes temporaires en pertes réelles.
-    """)
 
 # Tab 4: AI Assistant
 with tab4:
+    with st.expander("📘 Comprendre l'AI Assistant"):
+        st.markdown("""
+        ### 🤖 Ce que vous faites dans AI Assistant
+        
+        Cet onglet transforme votre portfolio en **cas d'étude vivant** pour une IA spécialisée :
+        vous lui posez des questions et elle vous répond à partir de vos données réelles.
+        
+        Le chat fonctionne comme une conversation : vos messages s'affichent à gauche,
+        ceux de l'IA à droite, et l'historique est conservé tant que la session reste ouverte.
+        
+        Vous pouvez demander une analyse de vos positions, un avis
+        sur votre niveau de diversification, ou un éclairage sur un risque spécifique.
+        
+        C'est aussi un espace pédagogique : si un concept vous échappe
+        (drawdown, corrélation, volatilité, etc.), vous pouvez demander
+        une explication contextualisée à partir de votre situation.
+        
+        La meilleure façon d'utiliser cet onglet est de **formuler vos doutes** :
+        "Qu'est-ce qui pourrait mal se passer avec mon portfolio actuel ?",
+        "Où suis-je trop exposé ?", "Qu'est-ce que je n'ai pas vu ?".
+        
+        Voyez l'IA comme un coach qui challenge vos idées,
+        pas comme une boule de cristal. Plus vos questions sont claires,
+        plus les réponses vous aideront à affiner votre propre réflexion.
+        """)
     st.subheader("🤖 AI Portfolio Manager")
     st.markdown("Ask questions about your portfolio and get AI-powered insights")
     
@@ -563,59 +608,35 @@ with tab4:
         
         # Add assistant message
         st.session_state.messages.append({"role": "assistant", "content": response})
-    
-    # Footer
-    st.markdown("---")
-    st.markdown("""
-    ### 📚 Comment utiliser l'AI Assistant
-    
-    Votre **assistant IA personnel** est un expert en analyse de portfolio et en marchés financiers. 
-    Il a accès à toutes les données de votre portfolio et peut vous aider à prendre de meilleures décisions d'investissement.
-    
-    **Ce que vous pouvez lui demander** :
-    - Analyser vos positions actuelles et identifier les risques
-    - Évaluer la diversification de votre portfolio
-    - Donner son avis sur un actif spécifique
-    - Expliquer des concepts financiers complexes
-    - Suggérer des ajustements à votre stratégie
-    - Répondre à toutes vos questions sur le trading et l'investissement
-    
-    **Comment l'utiliser** : Posez simplement votre question dans le chat en bas de l'écran. L'IA analyse votre portfolio 
-    en temps réel et vous fournit des réponses personnalisées basées sur vos positions actuelles.
-    
-    💡 **Exemples de questions** : "Mon portfolio est-il bien diversifié ?", "Quels sont les risques de mes positions actuelles ?", 
-    "Devrais-je vendre AAPL maintenant ?", "Explique-moi ce qu'est le P&L".
-    
-    ⚠️ **Important** : L'IA donne des conseils éducatifs, mais la décision finale vous appartient toujours !
-    
-    ---
-    
-    #### 🎯 But de l'opération
-    L'objectif est de vous donner un **second avis objectif et éduqué** sur vos décisions d'investissement. Quand on gère son propre argent, 
-    on est souvent biaisé par nos émotions, nos espoirs, nos peurs. L'IA analyse froidement les données et vous donne une perspective 
-    extérieure. C'est comme avoir un mentor financier disponible 24/7 qui connaît parfaitement votre situation.
-    
-    #### ⚖️ Les enjeux
-    - **Éducation continue** : Chaque interaction vous aide à mieux comprendre les marchés et à devenir un investisseur plus avisé
-    - **Détection de biais** : L'IA peut vous signaler si vous êtes trop exposé sur un secteur ou si vous prenez trop de risques
-    - **Confirmation ou remise en question** : Parfois l'IA confirmera votre intuition, parfois elle vous alertera sur un danger que vous n'aviez pas vu
-    - **Apprentissage des erreurs** : Demander pourquoi une position est en perte peut révéler des leçons importantes
-    
-    #### 💪 La difficulté
-    La plus grande difficulté est de **savoir poser les bonnes questions**. L'IA est puissante mais elle répond à ce que vous demandez. 
-    Si vous demandez "Dois-je acheter plus de TSLA ?", l'IA donnera un avis. Mais peut-être que la vraie question à poser était 
-    "Mon portfolio est-il déjà surexposé aux actions tech ?" Une question plus large et stratégique.
-    
-    Autre piège : l'IA donne des analyses basées sur des données et des principes généraux, mais **elle ne prédit pas l'avenir**. 
-    Elle peut dire "Historiquement, diversifier réduit le risque" (vrai), mais elle ne peut pas dire "AAPL va monter de 20% demain" (impossible à savoir).
-    
-    Enfin, il faut **rester critique**. L'IA est un outil d'aide, pas une boule de cristal. Si elle vous dit quelque chose qui semble 
-    étrange ou contraire à votre compréhension, creusez davantage, posez des questions de suivi. L'objectif est de comprendre le "pourquoi" 
-    derrière chaque conseil, pas juste d'obéir aveuglément.
-    """)
 
 # Tab 5: Trading Systems
 with tab5:
+    with st.expander("📘 Comprendre Trading Systems"):
+        st.markdown("""
+        ### 📋 Ce que vous faites dans Trading Systems
+        
+        Dans cet onglet, vous **pilotez vos systèmes automatiques en production** :
+        c'est la salle de contrôle où vous vérifiez ce que vos robots sont en train de faire.
+        
+        Chaque bloc correspond à un actif pour lequel vous avez créé un système
+        dans l'onglet *Add Equity*. Vous y voyez la position actuelle, le prix d'entrée,
+        le drawdown configuré et le statut On/Off.
+        
+        Le toggle *Active* vous permet d'allumer ou d'éteindre un système en un clic.
+        Quand il est sur *On*, le système surveille le marché en arrière-plan
+        et place des ordres aux niveaux de prix que vous avez définis.
+        
+        Le tableau *Price Levels* récapitule tous les paliers d'achat prévus :
+        c'est une façon visuelle de vérifier que la configuration correspond bien
+        à votre intention initiale (espacement, nombre de niveaux, profondeur totale).
+        
+        Le bouton *Remove* supprime complètement un système quand vous ne voulez plus
+        qu'il consomme de capital ou qu'il fasse partie de votre stratégie.
+        
+        Utilisez cet onglet pour faire des **revues régulières** de vos systèmes :
+        vérifier qu'ils sont toujours pertinents, qu'ils ne se chevauchent pas trop,
+        et qu'ils restent cohérents avec l'évolution de votre portefeuille global.
+        """)
     st.subheader("📋 Trading Systems")
     
     equities = load_equities()
@@ -664,60 +685,6 @@ with tab5:
                     st.rerun()
     else:
         st.info("No trading systems configured. Add an equity in the 'Add Equity' tab.")
-    
-    # Footer
-    st.markdown("---")
-    st.markdown("""
-    ### 📚 Comment utiliser Trading Systems
-    
-    Cet onglet vous donne une **vue détaillée et un contrôle total** sur tous vos systèmes de trading automatisés.
-    
-    **Pour chaque système, vous pouvez** :
-    - Voir tous les détails : position actuelle, prix d'entrée, drawdown configuré
-    - **Activer/Désactiver** le système avec le bouton toggle. Quand "Active" est sur ON, le système surveille le marché 
-      et peut passer des ordres automatiquement selon les niveaux de prix définis.
-    - Visualiser tous les **niveaux de prix** : ce sont les prix auxquels le système achètera automatiquement. 
-      Par exemple, si SPY baisse à 629.57€, le système achètera 1 action automatiquement (niveau 1), 
-      puis une autre à 596.44€ (niveau 2), etc.
-    - **Supprimer** un système si vous ne voulez plus l'utiliser
-    
-    **Comment ça fonctionne** : Imaginez que vous voulez acheter progressivement un actif quand son prix baisse. 
-    Au lieu de surveiller le marché 24/7, le système le fait pour vous. Il achète automatiquement aux prix que vous avez définis, 
-    réduisant ainsi votre prix moyen d'achat (stratégie DCA - Dollar Cost Averaging).
-    
-    💡 **Conseil** : Commencez par tester avec un seul système en mode "Off" pour comprendre comment fonctionnent les niveaux, 
-    puis activez-le quand vous êtes à l'aise avec la stratégie.
-    
-    ⚠️ **Attention** : Un système actif peut passer des ordres automatiquement. Assurez-vous de comprendre votre stratégie avant d'activer !
-    
-    ---
-    
-    #### 🎯 But de l'opération
-    Vous êtes en train de **piloter vos robots de trading**. C'est votre salle de contrôle. Chaque système que vous voyez ici est comme 
-    un employé virtuel qui travaille pour vous, surveillant les marchés sans relâche et exécutant vos ordres selon votre stratégie. 
-    L'objectif est d'avoir une vision claire de tous vos systèmes actifs, de pouvoir intervenir rapidement si nécessaire 
-    (désactiver un système qui se comporte mal, ajuster des paramètres), et de monitorer l'efficacité de chaque stratégie.
-    
-    #### ⚖️ Les enjeux
-    - **Cohérence stratégique** : Avoir 10 systèmes actifs signifie potentiellement 10 actifs différents. Sont-ils complémentaires ou redondants ?
-    - **Gestion du capital** : Chaque système actif peut déclencher des achats. Avez-vous assez de capital pour tous les niveaux de tous les systèmes ?
-    - **Surveillance continue** : Un système actif trade sans vous. Il faut vérifier régulièrement que les ordres exécutés sont cohérents
-    - **Discipline système** : Résister à l'envie de désactiver un système au premier signe de baisse (qui est justement son moment d'action)
-    
-    #### 💪 La difficulté
-    La difficulté majeure est de **faire confiance au système sans perdre le contrôle**. Quand vous activez un système, vous acceptez 
-    qu'il achète automatiquement selon les niveaux configurés. Si le marché baisse fortement, le système va consommer vos niveaux un par un, 
-    et votre compte sera en rouge. C'est exactement ce qui est prévu ! Mais humainement, c'est difficile à accepter. 
-    
-    Vous devez constamment résister à deux tentations opposées :
-    1. **Sur-intervention** : Désactiver le système dès que ça baisse, modifier les niveaux constamment, micro-manager chaque trade. 
-       Résultat : vous sabotez la stratégie et transformez un système discipliné en trading émotionnel.
-    2. **Sous-surveillance** : Activer tous les systèmes et ne plus jamais regarder. Un système peut mal fonctionner (bug, mauvais paramétrage), 
-       un actif peut s'effondrer durablement. Il faut un équilibre : faire confiance mais vérifier régulièrement.
-    
-    La clé est de **définir des règles claires avant d'activer** : "Je laisse ce système actif tant que l'actif ne baisse pas de plus de X%", 
-    ou "Je révise mes systèmes tous les lundis". Avec des règles, vous évitez les décisions émotionnelles tout en gardant le contrôle.
-    """)
 
 # Footer
 st.markdown("---")
