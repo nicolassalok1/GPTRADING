@@ -2559,23 +2559,23 @@ def render_pdf_derivation(title: str, pdf_path: str, download_name: str | None =
 
 
 
-def ui_heston_full_pipeline():
-    st.header("Surface IV Heston")
+def ui_heston_full_pipeline(auto_run: bool = False):
+    st.header("Calibration Heston (Carr–Madan)")
 
     col_cfg1, col_cfg2 = st.columns(2)
     with col_cfg1:
         ticker = st.text_input(
             "Ticker (sous-jacent)",
-            value="SPY",
+            value=st.session_state.get("tkr_common", "SPY"),
             key="heston_cboe_ticker",
             help="Code du sous-jacent coté au CBOE utilisé pour la calibration Heston.",
         ).strip().upper()
         rf_rate = float(st.session_state.get("common_rate", 0.02))
         div_yield = float(st.session_state.get("common_dividend", 0.0))
 
-        with col_cfg2:
-            span_mc = float(st.session_state.get("heatmap_span_value", 20.0))
-            n_maturities = 40
+    with col_cfg2:
+        span_mc = float(st.session_state.get("heatmap_span_value", 20.0))
+        n_maturities = 40
 
 
     state = st.session_state
@@ -2597,6 +2597,7 @@ def ui_heston_full_pipeline():
             st.info(f"📡 Données CBOE chargées pour {ticker} (cache)")
             st.success(f"{len(calls_df)} calls, {len(puts_df)} puts | S0 ≈ {S0_ref:.2f}")
             maturity_list = sorted(calls_df["T"].round(2).unique().tolist())
+            st.session_state["cboe_T_options"] = maturity_list
             st.session_state["sidebar_maturity_options"] = maturity_list
             span_sync = float(st.session_state.get("heatmap_span_value", 20.0))
             if maturity_list:
@@ -2639,6 +2640,7 @@ def ui_heston_full_pipeline():
                 "K_common": f"{prefills['K_common']:.2f}",
                 "sigma_common": f"{prefills['sigma_common']:.4f}",
             }
+            st.session_state["heston_cboe_loaded_once"] = True
             st.rerun()
         except Exception as exc:
             st.error(f"❌ Erreur lors du téléchargement des données CBOE : {exc}")
@@ -2726,6 +2728,7 @@ def ui_heston_full_pipeline():
 
     run_button = False
     if calls_df is not None and puts_df is not None and S0_ref is not None:
+        # Only explicit click launches calibration; changing K/T won't auto-relance
         run_button = st.button("🚀 Lancer l'analyse", type="primary", width="stretch", key="heston_cboe_run")
         st.divider()
 
@@ -2795,328 +2798,7 @@ def ui_heston_full_pipeline():
             st.success("✓ Calibration terminée")
             st.dataframe(pd.Series(params_dict, name="Paramètre").to_frame())
 
-            st.info("📐 Surfaces analytiques Carr-Madan")
-            K_grid = np.arange(S0_ref - span_mc, S0_ref + span_mc + 1, 1)
-            t_min = max(MIN_IV_MATURITY, calib_band_range[0])
-            t_max = max(t_min + 0.05, min(2.0, calib_band_range[1]))
-            T_grid = np.linspace(t_min, t_max, n_maturities)
-            K_grid = np.unique(K_grid)
-            T_grid = np.unique(T_grid)
-            Ks_t = torch.tensor(K_grid, dtype=torch.float64)
-
-            call_prices_cm = np.zeros((len(T_grid), len(K_grid)))
-            put_prices_cm = np.zeros_like(call_prices_cm)
-            for i, T_val in enumerate(T_grid):
-                call_vals = carr_madan_call_torch(S0_ref, rf_rate, div_yield, float(T_val), params_cm, Ks_t)
-                discount = torch.exp(-torch.tensor(rf_rate * T_val, dtype=torch.float64))
-                forward = torch.exp(-torch.tensor(div_yield * T_val, dtype=torch.float64))
-                put_vals = call_vals - S0_ref * forward + Ks_t * discount
-                call_prices_cm[i, :] = call_vals.detach().cpu().numpy()
-                put_prices_cm[i, :] = put_vals.detach().cpu().numpy()
-
-            call_iv_cm = np.zeros_like(call_prices_cm)
-            put_iv_cm = np.zeros_like(put_prices_cm)
-            for i, T_val in enumerate(T_grid):
-                for j, K_val in enumerate(K_grid):
-                    call_iv_cm[i, j] = implied_vol_option(call_prices_cm[i, j], S0_ref, K_val, T_val, rf_rate, "call")
-                    put_iv_cm[i, j] = implied_vol_option(put_prices_cm[i, j], S0_ref, K_val, T_val, rf_rate, "put")
-
-            KK_cm, TT_cm = np.meshgrid(K_grid, T_grid, indexing="xy")
-            call_iv_max = float(np.nanmax(call_iv_cm)) if call_iv_cm.size > 0 else 0.0
-            put_iv_max = float(np.nanmax(put_iv_cm)) if put_iv_cm.size > 0 else 0.0
-
-            surf_call_market = build_market_surface(calls_df, "C_mkt", "call", KK_cm, TT_cm, rf_rate)
-            surf_put_market = build_market_surface(puts_df, "P_mkt", "put", KK_cm, TT_cm, rf_rate)
-
-            if surf_call_market is not None:
-                call_iv_max = max(call_iv_max, float(np.nanmax(surf_call_market)))
-            if surf_put_market is not None:
-                put_iv_max = max(put_iv_max, float(np.nanmax(surf_put_market)))
-
-            call_iv_zmax = call_iv_max + 0.1
-            put_iv_zmax = put_iv_max + 0.1
-
-            fig_call_cm = go.Figure(
-                data=[
-                    go.Surface(
-                        x=KK_cm,
-                        y=TT_cm,
-                        z=call_iv_cm,
-                        colorscale="Viridis",
-                        cmin=0.0,
-                        cmax=call_iv_zmax,
-                    )
-                ]
-            )
-            fig_call_cm.update_layout(
-                title=f"IV Surface Calls (Carr-Madan) - {ticker}",
-                scene=dict(
-                    xaxis_title="K",
-                    yaxis_title="T",
-                    zaxis_title="IV",
-                    zaxis=dict(range=[0.0, call_iv_zmax]),
-                ),
-                height=600,
-            )
-
-            fig_put_cm = go.Figure(
-                data=[
-                    go.Surface(
-                        x=KK_cm,
-                        y=TT_cm,
-                        z=put_iv_cm,
-                        colorscale="Viridis",
-                        cmin=0.0,
-                        cmax=put_iv_zmax,
-                    )
-                ]
-            )
-            fig_put_cm.update_layout(
-                title=f"IV Surface Puts (Carr-Madan) - {ticker}",
-                scene=dict(
-                    xaxis_title="K",
-                    yaxis_title="T",
-                    zaxis_title="IV",
-                    zaxis=dict(range=[0.0, put_iv_zmax]),
-                ),
-                height=600,
-            )
-
-            fig_call_market = None
-            fig_put_market = None
-            if surf_call_market is not None:
-                fig_call_market = go.Figure(
-                    data=[
-                        go.Surface(
-                            x=KK_cm,
-                            y=TT_cm,
-                            z=surf_call_market,
-                            colorscale="Plasma",
-                            cmin=0.0,
-                            cmax=call_iv_zmax,
-                        )
-                    ]
-                )
-                fig_call_market.update_layout(
-                    title=f"IV Surface Calls (Marché) - {ticker}",
-                    scene=dict(
-                        xaxis_title="K",
-                        yaxis_title="T",
-                        zaxis_title="IV",
-                        zaxis=dict(range=[0.0, call_iv_zmax]),
-                    ),
-                    height=600,
-                )
-            if surf_put_market is not None:
-                fig_put_market = go.Figure(
-                    data=[
-                        go.Surface(
-                            x=KK_cm,
-                            y=TT_cm,
-                            z=surf_put_market,
-                            colorscale="Plasma",
-                            cmin=0.0,
-                            cmax=put_iv_zmax,
-                        )
-                    ]
-                )
-                fig_put_market.update_layout(
-                    title=f"IV Surface Puts (Marché) - {ticker}",
-                    scene=dict(
-                        xaxis_title="K",
-                        yaxis_title="T",
-                        zaxis_title="IV",
-                        zaxis=dict(range=[0.0, put_iv_zmax]),
-                    ),
-                    height=600,
-                )
-
-            market_call_grid = build_market_price_grid(calls_df, "C_mkt", KK_cm, TT_cm)
-            market_put_grid = build_market_price_grid(puts_df, "P_mkt", KK_cm, TT_cm)
-
-            # Paramètres communs utilisés pour le pricing ponctuel Heston
-            common_S0 = float(st.session_state.get("common_spot", S0_ref))
-            # En absence de strike commun explicite, on prend le spot comme valeur de repli
-            common_K = float(st.session_state.get("common_strike", S0_ref))
-            # En absence de maturité commune, on prend la maturité cible de calibration ou la première de la grille
-            fallback_T = float(calib_T_target if calib_T_target is not None else T_grid[0])
-            common_T = float(st.session_state.get("common_maturity", fallback_T))
-            common_r = float(st.session_state.get("common_rate", rf_rate))
-            common_d = float(st.session_state.get("common_dividend", div_yield))
-
-            cpflag_heston_single = st.selectbox(
-                "Call / Put (Heston – prix ponctuel)",
-                ["Call", "Put"],
-                key="cpflag_heston_single",
-                help="Type d’option à pricer avec les paramètres Heston calibrés.",
-            )
-            if st.button(
-                f"Calculer le prix Heston ({cpflag_heston_single})",
-                key="btn_price_eu_heston",
-            ):
-                try:
-                    Ks_t_single = torch.tensor([common_K], dtype=torch.float64)
-                    call_vals_single = carr_madan_call_torch(
-                        float(common_S0),
-                        float(common_r),
-                        float(common_d),
-                        float(common_T),
-                        params_cm,
-                        Ks_t_single,
-                    )
-                    call_price_single = float(call_vals_single[0].detach().cpu().numpy())
-                    discount_single = math.exp(-common_r * common_T)
-                    forward_single = math.exp(-common_d * common_T)
-                    put_price_single = call_price_single - common_S0 * forward_single + common_K * discount_single
-                    if cpflag_heston_single == "Call":
-                        st.success(f"Prix Heston (Call) = {call_price_single:.6f}")
-                    else:
-                        st.success(f"Prix Heston (Put) = {put_price_single:.6f}")
-                except Exception as exc:
-                    st.error(f"Erreur lors du calcul Heston : {exc}")
-
-            st.caption(
-                f"Paramètres utilisés pour le prix Heston ponctuel : "
-                f"S0={common_S0:.4f}, K={common_K:.4f}, T={common_T:.4f}, "
-                f"r={common_r:.4f}, d={common_d:.4f}, "
-                f"κ={float(st.session_state.get('heston_kappa_common', 0.0)):.4f}, "
-                f"θ={float(st.session_state.get('heston_theta_common', 0.0)):.4f}, "
-                f"η={float(st.session_state.get('heston_eta_common', 0.0)):.4f}, "
-                f"ρ={float(st.session_state.get('heston_rho_common', 0.0)):.4f}, "
-                f"v0={float(st.session_state.get('heston_v0_common', 0.0)):.4f}"
-            )
-
-            tab_calls, tab_puts = st.tabs(["📈 Calls", "📉 Puts"])
-
-            pad = 10.0
-            call_min = float(np.nanmin(call_prices_cm)) if call_prices_cm.size > 0 else 0.0
-            call_max = float(np.nanmax(call_prices_cm)) if call_prices_cm.size > 0 else 0.0
-            call_zmin = call_min - pad
-            call_zmax = call_max + pad
-
-            put_min = float(np.nanmin(put_prices_cm)) if put_prices_cm.size > 0 else 0.0
-            put_max = float(np.nanmax(put_prices_cm)) if put_prices_cm.size > 0 else 0.0
-            put_zmin = put_min - pad
-            put_zmax = put_max + pad
-
-            fig_heat_call_cm = go.Figure(
-                data=[
-                    go.Heatmap(
-                        z=call_prices_cm,
-                        x=K_grid,
-                        y=T_grid,
-                        colorscale="Viridis",
-                        colorbar=dict(title="Prix des Call Heston"),
-                        zmin=call_zmin,
-                        zmax=call_zmax,
-                    )
-                ]
-            )
-            fig_heat_call_cm.update_layout(xaxis_title="Strike K", yaxis_title="Maturité T")
-            fig_heat_put_cm = go.Figure(
-                data=[
-                    go.Heatmap(
-                        z=put_prices_cm,
-                        x=K_grid,
-                        y=T_grid,
-                        colorscale="Viridis",
-                        colorbar=dict(title="Prix des Put Heston"),
-                        zmin=put_zmin,
-                        zmax=put_zmax,
-                    )
-                ]
-            )
-            fig_heat_put_cm.update_layout(xaxis_title="Strike K", yaxis_title="Maturité T")
-
-            with tab_calls:
-                st.subheader("Carr-Madan : IV & prix (Calls)")
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.plotly_chart(fig_call_cm, width="stretch", config=PLOTLY_CONFIG)
-                with c2:
-                    st.plotly_chart(fig_heat_call_cm, width="stretch", config=PLOTLY_CONFIG)
-
-                st.subheader("Marché : IV & prix (Calls)")
-                c3, c4 = st.columns(2)
-                with c3:
-                    if fig_call_market:
-                        st.plotly_chart(fig_call_market, width="stretch", config=PLOTLY_CONFIG)
-                    else:
-                        st.info("Pas assez de points marché pour la surface call.")
-                with c4:
-                    if market_call_grid is not None:
-                        fig_heat_call_mkt = go.Figure(
-                            data=[
-                                go.Heatmap(
-                                    z=market_call_grid,
-                                    x=K_grid,
-                                    y=T_grid,
-                                    colorscale="Plasma",
-                                    colorbar=dict(title="Prix des Call Marché"),
-                                    zmin=call_zmin,
-                                    zmax=call_zmax,
-                                )
-                            ]
-                        )
-                        fig_heat_call_mkt.update_layout(xaxis_title="Strike K", yaxis_title="Maturité T")
-                        st.plotly_chart(fig_heat_call_mkt, width="stretch", config=PLOTLY_CONFIG)
-                    else:
-                        st.info("Pas assez de points marché pour la heatmap call.")
-
-                st.markdown(
-                    f"""
-**Lecture des heatmaps (Calls)**
-- Axe des abscisses **K** : strikes autour de S0 ≈ `{S0_ref:.2f}`
-- Axe des ordonnées **T** : maturité en années
-- Couleur : niveau de **prix du call** pour chaque couple (K, T)
-- Paramètres utilisés : `S0 = {S0_ref:.2f}`, `r = {rf_rate:.3f}`, `q = {div_yield:.3f}`
-"""
-                )
-
-            with tab_puts:
-                st.subheader("Carr-Madan : IV & prix (Puts)")
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.plotly_chart(fig_put_cm, width="stretch", config=PLOTLY_CONFIG)
-                with c2:
-                    st.plotly_chart(fig_heat_put_cm, width="stretch", config=PLOTLY_CONFIG)
-
-                st.subheader("Marché : IV & prix (Puts)")
-                c3, c4 = st.columns(2)
-                with c3:
-                    if fig_put_market:
-                        st.plotly_chart(fig_put_market, width="stretch", config=PLOTLY_CONFIG)
-                    else:
-                        st.info("Pas assez de points marché pour la surface put.")
-                with c4:
-                    if market_put_grid is not None:
-                        fig_heat_put_mkt = go.Figure(
-                            data=[
-                                go.Heatmap(
-                                    z=market_put_grid,
-                                    x=K_grid,
-                                    y=T_grid,
-                                    colorscale="Plasma",
-                                    colorbar=dict(title="Prix des Put Marché"),
-                                    zmin=put_zmin,
-                                    zmax=put_zmax,
-                                )
-                            ]
-                        )
-                        fig_heat_put_mkt.update_layout(xaxis_title="Strike K", yaxis_title="Maturité T")
-                        st.plotly_chart(fig_heat_put_mkt, width="stretch", config=PLOTLY_CONFIG)
-                    else:
-                        st.info("Pas assez de points marché pour la heatmap put.")
-
-                st.markdown(
-                    f"""
-**Lecture des heatmaps (Puts)**
-- Axe des abscisses **K** : strikes autour de S0 ≈ `{S0_ref:.2f}`
-- Axe des ordonnées **T** : maturité en années
-- Couleur : niveau de **prix du put** pour chaque couple (K, T)
-- Paramètres utilisés : `S0 = {S0_ref:.2f}`, `r = {rf_rate:.3f}`, `q = {div_yield:.3f}`
-"""
-                )
+            # Fin : on s'arrête après calibration, pas de surfaces IV/heatmaps pour alléger l'affichage.
 
             st.balloons()
             st.success("🎉 Analyse terminée")
@@ -3168,74 +2850,105 @@ default_values = {
 }
 for k, v in default_values.items():
     st.session_state.setdefault(k, v)
+st.session_state.setdefault("heston_cboe_loaded_once", False)
 
-st.markdown("### Paramètres communs (générés à partir du ticker CBOE)")
-col_tkr, col_fetch = st.columns([2, 1])
-with col_tkr:
-    ticker_common = st.text_input(
-        "Ticker CBOE",
-        value=st.session_state.get("tkr_common", "SPY"),
-        key="tkr_common_input",
-    ).strip().upper()
-with col_fetch:
-    fetch_common = st.button("📡 Charger ticker", key="fetch_common_ticker")
+st.markdown("### Calibration Heston (Carr–Madan) – zone commune")
+ui_heston_full_pipeline()
 
-# Charger les données CBOE pour extraire S0 et liste des maturités
-if fetch_common and ticker_common:
-    try:
-        calls_df, puts_df, S0_ref = load_cboe_data(ticker_common)
-        st.session_state["S0_common"] = float(S0_ref)
-        st.session_state["K_common"] = float(round(S0_ref))
-        # concat calls/puts to get unique maturities
-        combined = pd.concat([calls_df[["T"]], puts_df[["T"]]], axis=0)
-        maturities = sorted(combined["T"].dropna().round(2).unique().tolist())
-        st.session_state["cboe_T_options"] = maturities
-        if maturities:
-            st.session_state["T_common"] = float(maturities[0])
-        st.success(f"Ticker {ticker_common} chargé: S0≈{S0_ref:.2f}, maturités trouvées: {len(maturities)}")
-    except Exception as e:
-        st.error(f"Impossible de charger les données CBOE pour {ticker_common}: {e}")
+st.markdown("### Paramètres communs")
 
-mat_options = st.session_state.get("cboe_T_options", [st.session_state.get("T_common", 1.0)])
+# Masquer le reste tant que les données CBOE n'ont pas été récupérées
+if not st.session_state.get("heston_cboe_loaded_once", False):
+    st.info('Clique sur "Récupérer les données du ticker" pour afficher le reste de l’application.')
+    st.stop()
+
+if not st.session_state.get("heston_cboe_loaded_once", False):
+    st.info("Charge d'abord les données CBOE (via le bloc de calibration Heston) pour afficher les paramètres.")
+    mat_options = [st.session_state.get("T_common", 1.0)]
+else:
+    mat_options = st.session_state.get("cboe_T_options")
+    if not mat_options:
+        # Essaie de reconstruire la liste depuis les données CBOE déjà en cache
+        calls_df = st.session_state.get("heston_calls_df")
+        puts_df = st.session_state.get("heston_puts_df")
+        frames = []
+        if calls_df is not None:
+            frames.append(calls_df[["T"]])
+        if puts_df is not None:
+            frames.append(puts_df[["T"]])
+        if frames:
+            mat_options = sorted(pd.concat(frames, axis=0)["T"].dropna().round(2).unique().tolist())
+            st.session_state["cboe_T_options"] = mat_options
+        else:
+            mat_options = [st.session_state.get("T_common", 1.0)]
 
 col_left, col_right = st.columns(2)
 
 with col_left:
-    S0_common = st.number_input(
-        "S0 (spot)",
-        min_value=0.01,
-        step=0.01,
-        key="S0_common",
-        placeholder=placeholder_vals.get("S0_common"),
-        help="Niveau actuel du sous-jacent utilisé comme spot de référence pour les calculs.",
-    )
-    K_common = st.number_input(
-        "K (strike)",
-        min_value=0.01,
-        step=1.0,
-        key="K_common",
-        placeholder=placeholder_vals.get("K_common"),
-        help="Strike de référence de l’option, au centre des grilles de prix.",
-    )
-    T_common = st.selectbox(
-        "T (maturité, années)",
-        options=mat_options if mat_options else [st.session_state.get("T_common", 1.0)],
-        index=0 if mat_options else 0,
-        key="T_common",
-        help=(
-            "Maturité de l’option en années. "
-            "Verrouillée après le téléchargement Heston : cliquez sur un autre onglet pour réactiver."
-            if heston_tab_locked
-            else "Maturité de l’option en années utilisée pour tous les calculs."
-        ),
-    )
-    sigma_common = st.number_input(
-        "Volatilité σ",
-        min_value=0.0001,
-        key="sigma_common",
-        placeholder=placeholder_vals.get("sigma_common"),
-        help="Volatilité annualisée utilisée par défaut dans les modèles de diffusion.",
-    )
+    # Spot provenant des données CBOE (chargées)
+    S0_common = float(st.session_state.get("heston_S0_ref", st.session_state.get("S0_common", 0.0)))
+    st.markdown(f"**S0 (spot CBOE)** : {S0_common:.4f}")
+    # La maturité de référence pour les calculs est la maturité cible choisie pour la calibration
+    T_common = float(st.session_state.get("heston_calib_T_target", st.session_state.get("T_common", 1.0)))
+    st.session_state["T_common"] = T_common
+    st.markdown(f"**T (maturité, années) — cible calibration** : {T_common:.4f}")
+    # K issu des strikes CBOE pour T sélectionné
+    K_common = st.session_state.get("K_common", float(S0_common))
+    K_cboe_options: list[float] = []
+    state = st.session_state
+    calls_df = state.get("heston_calls_df")
+    puts_df = state.get("heston_puts_df")
+    sel_T = float(T_common)
+    if calls_df is not None:
+        K_cboe_options.extend(calls_df[calls_df["T"].round(2) == round(sel_T, 2)]["K"].tolist())
+    if puts_df is not None:
+        K_cboe_options.extend(puts_df[puts_df["T"].round(2) == round(sel_T, 2)]["K"].tolist())
+    K_cboe_options = sorted(set(K_cboe_options))
+    if K_cboe_options:
+        # Choix du strike proche du spot privilégié
+        default_idx = int(np.argmin(np.abs(np.array(K_cboe_options) - float(S0_common))))
+        K_pick = st.selectbox(
+            "K (strike) – CBOE",
+            options=K_cboe_options,
+            index=default_idx,
+            format_func=lambda x: f"{x:.2f}",
+            key="K_common_select",
+            help="Strikes disponibles pour la maturité sélectionnée (T maître).",
+        )
+        K_common = float(K_pick)
+        st.session_state["K_common"] = K_common
+        # Cherche une IV correspondante et met à jour sigma
+        iv_pick = np.nan
+        price_pick = np.nan
+        if calls_df is not None:
+            sub = calls_df[calls_df["T"].round(2) == round(sel_T, 2)]
+            row_call = sub.loc[(sub["K"] - K_common).abs().idxmin()] if not sub.empty else None
+            if row_call is not None:
+                iv_pick = float(row_call.get("iv_market", np.nan))
+                price_pick = float(row_call.get("C_mkt", np.nan))
+        if (not np.isfinite(iv_pick)) and puts_df is not None:
+            subp = puts_df[puts_df["T"].round(2) == round(sel_T, 2)]
+            row_put = subp.loc[(subp["K"] - K_common).abs().idxmin()] if not subp.empty else None
+            if row_put is not None:
+                iv_pick = float(row_put.get("iv_market", np.nan))
+                if not np.isfinite(price_pick):
+                    price_pick = float(row_put.get("P_mkt", np.nan))
+        if not np.isfinite(iv_pick):
+            # tentative de calcul à partir du prix si disponible
+            S_ref = float(state.get("heston_S0_ref", S0_common))
+            if np.isfinite(price_pick):
+                iv_pick = implied_vol_option(price_pick, S_ref, K_common, sel_T, float(state.get("common_rate", r_common)), "call")
+        if np.isfinite(iv_pick) and iv_pick > 0:
+            st.session_state["sigma_common"] = float(iv_pick)
+            st.caption(f"IV CBOE retenue pour T={sel_T:.2f}, K={K_common:.2f} : σ ≈ {iv_pick:.4f}")
+        else:
+            st.caption("IV non trouvée pour ce strike/maturité, utilisez σ ci-dessous.")
+    else:
+        st.warning("Aucun strike CBOE pour la maturité sélectionnée. Ajustez T ou renseignez K/σ manuellement.")
+        st.session_state["K_common"] = K_common
+    # Volatilité déduite (ou fallback session)
+    sigma_common = float(st.session_state.get("sigma_common", 0.2))
+    st.markdown(f"**σ (IV déduite)** : {sigma_common:.4f}")
     r_common = st.number_input(
         "Taux sans risque r",
         key="r_common",
@@ -3256,48 +2969,33 @@ with col_left:
 
 with col_right:
     st.markdown("Paramètres Heston communs")
-    heston_kappa_common = st.number_input(
-        "κ",
-        value=float(st.session_state.get("heston_kappa_common", 2.0)),
-        min_value=0.0,
-        key="heston_kappa_input",
-        help="Vitesse de rappel de la variance vers son niveau de long terme.",
-    )
-    heston_theta_common = st.number_input(
-        "θ",
-        value=float(st.session_state.get("heston_theta_common", 0.04)),
-        min_value=0.0001,
-        key="heston_theta_input",
-        help="Niveau de variance de long terme du modèle de Heston.",
-    )
-    heston_eta_common = st.number_input(
-        "η",
-        value=float(st.session_state.get("heston_eta_common", 0.5)),
-        min_value=0.0001,
-        key="heston_eta_input",
-        help="Volatilité de la variance, c’est-à-dire l’ampleur des fluctuations de variance.",
-    )
-    heston_rho_common = st.number_input(
-        "ρ",
-        value=float(st.session_state.get("heston_rho_common", -0.7)),
-        min_value=-0.99,
-        max_value=0.99,
-        key="heston_rho_input",
-        help="Corrélation entre les chocs sur le sous-jacent et sur la variance.",
-    )
-    heston_v0_common = st.number_input(
-        "v0",
-        value=float(st.session_state.get("heston_v0_common", 0.04)),
-        min_value=0.0001,
-        key="heston_v0_input",
-        help="Variance initiale au temps 0 dans le modèle de Heston.",
+    heston_kappa_common = float(st.session_state.get("heston_kappa_common", 2.0))
+    heston_theta_common = float(st.session_state.get("heston_theta_common", 0.04))
+    heston_eta_common = float(st.session_state.get("heston_eta_common", 0.5))
+    heston_rho_common = float(st.session_state.get("heston_rho_common", -0.7))
+    heston_v0_common = float(st.session_state.get("heston_v0_common", 0.04))
+    common_rdisp = float(st.session_state.get("common_rate", r_common))
+    common_qdisp = float(st.session_state.get("common_dividend", d_common))
+
+    st.markdown(
+        f"""
+        - κ = **{heston_kappa_common:.4f}**
+        - θ = **{heston_theta_common:.4f}**
+        - η = **{heston_eta_common:.4f}**
+        - ρ = **{heston_rho_common:.4f}**
+        - v0 = **{heston_v0_common:.4f}**
+        - S₀ (calibration) = **{float(st.session_state.get("common_spot", S0_common)):.4f}**
+        - r = **{common_rdisp:.4f}**
+        - q = **{common_qdisp:.4f}**
+        """
     )
 
-st.session_state["heston_kappa_common"] = float(heston_kappa_common)
-st.session_state["heston_theta_common"] = float(heston_theta_common)
-st.session_state["heston_eta_common"] = float(heston_eta_common)
-st.session_state["heston_rho_common"] = float(heston_rho_common)
-st.session_state["heston_v0_common"] = float(heston_v0_common)
+# Rafraîchir les valeurs en session (issues de la calibration ou des défauts)
+st.session_state["heston_kappa_common"] = heston_kappa_common
+st.session_state["heston_theta_common"] = heston_theta_common
+st.session_state["heston_eta_common"] = heston_eta_common
+st.session_state["heston_rho_common"] = heston_rho_common
+st.session_state["heston_v0_common"] = heston_v0_common
 
 heatmap_spot_values = _heatmap_axis(S0_common, heatmap_span)
 heatmap_strike_values = _heatmap_axis(K_common, heatmap_span)
@@ -3379,7 +3077,6 @@ with tab_european:
                 "- **Paramètres Heston calibrés** : paramètres implicites du modèle `(κ, θ, σ_v, ρ, v0)` que la procédure d’optimisation ajuste pour coller au mieux aux prix observés."
             ),
         )
-        ui_heston_full_pipeline()
 
     with tab_eu_bsm:
         render_unlock_sidebar_button("eu_bsm", "🔓 Réactiver T (onglet BSM)")
@@ -3821,6 +3518,7 @@ with tab_lookback:
             key="t0_lb_exact",
             help="Temps déjà écoulé depuis l’émission de l’option lookback (en années).",
         )
+        r_lb = max(r_common, 1e-6)
         if st.button(
             "Calculer le prix lookback exact",
             key="btn_price_lb_exact",
@@ -3830,7 +3528,7 @@ with tab_lookback:
                     T=float(T_common),
                     t=float(t0_lb),
                     S0=float(common_spot_value),
-                    r=float(r_common),
+                    r=float(r_lb),
                     sigma=float(sigma_common),
                 )
                 price_lb_exact = float(lookback_opt.price_exact())
@@ -3839,14 +3537,14 @@ with tab_lookback:
                 st.error(f"Erreur lookback (formule exacte) : {exc}")
         st.caption(
             f"Paramètres utilisés pour le prix lookback exact : "
-            f"S0={common_spot_value:.4f}, T={T_common:.4f}, r={r_common:.4f}, σ={sigma_common:.4f}, t={t0_lb:.4f}"
+            f"S0={common_spot_value:.4f}, T={T_common:.4f}, r={r_lb:.4f}, σ={sigma_common:.4f}, t={t0_lb:.4f}"
         )
         with st.spinner("Calcul de la heatmap exacte"):
             heatmap_lb_exact = _compute_lookback_exact_heatmap(
                 heatmap_spot_values,
                 heatmap_maturity_values,
                 t0_lb,
-                r_common,
+                r_lb,
                 sigma_common,
             )
         st.write("Heatmap Lookback (formule exacte)")

@@ -1896,11 +1896,8 @@ with tab4:
 
 # Tab 5: app_to_copy (copie intégrale)
 with tab5:
-    st.header("app_to_copy — reproduction complète")
-    st.caption("Cette section exécute directement app_to_copy.py dans ce contexte, sidebar incluse.")
     with st.spinner("Chargement de la copie intégrale..."):
         runpy.run_path("app_to_copy.py", run_name="__app_to_copy__")
 
 # Footer
 st.markdown("---")
-st.caption("⚠️ This is a paper trading bot. Always test thoroughly before using real money.")
