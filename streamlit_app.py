@@ -356,7 +356,9 @@ def fetch_options_chain(symbol):
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         payload = response.json()
-        options = payload.get("data", {}).get("options", [])
+        data_block = payload.get("data", {})
+        options = data_block.get("options", [])
+        spot = data_block.get("current_price", 0.0) or 0.0
 
         today = datetime.date.today()
         chain = []
@@ -403,7 +405,8 @@ def fetch_options_chain(symbol):
             chain.append(
                 {
                     "symbol": opt_symbol,
-                    "underlying": payload.get("data", {}).get("symbol", symbol.upper()),
+                    "underlying": data_block.get("symbol", symbol.upper()),
+                    "spot": spot,
                     "type": "call" if cp_flag.upper() == "C" else "put",
                     "strike": strike,
                     "expiration": expiration.isoformat(),
@@ -507,7 +510,7 @@ def place_limit_order(symbol, price):
         return False
 
 # Streamlit UI
-st.title("📈 AI Trading Bot")
+st.title("📈 AI assisted Trading system")
 st.markdown("---")
 
 with st.expander("📘 Tutoriel d'utilisation de l'outil"):
@@ -576,17 +579,41 @@ with st.sidebar:
         st.rerun()
 
 # Main tabs
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊 Dashboard",
     "💰 Buy/Sell",
     "➕ Add Equity",
-    "🤖 AI Assistant",
     "📋 Trading Systems",
     "🧾 Options",
 ])
 
 # Tab 1: Dashboard
 with tab1:
+    # AI Assistant section moved here
+    st.subheader("🤖 AI Portfolio Assistant")
+    st.markdown("Ask questions about your portfolio and get AI-powered insights")
+    
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+    
+    if prompt := st.chat_input("Ask about your portfolio..."):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                response = chatgpt_response(prompt)
+                st.markdown(response)
+        
+        st.session_state.messages.append({"role": "assistant", "content": response})
+
+    st.markdown("---")
+
     with st.expander("📘 Comprendre le Dashboard"):
         st.markdown("""
         ### 📊 Ce que vous faites dans le Dashboard
@@ -879,18 +906,20 @@ with tab3:
         de façon structurée (indice, action, ETF, crypto, etc.).
         
         Le champ *Direction* vous permet de choisir si vous pariez sur la hausse (Long) ou la baisse (Short) :
-        - **Long** : le système achètera automatiquement quand le prix baisse (niveaux en dessous du prix d'entrée)
-        - **Short** : le système vendra à découvert quand le prix monte (niveaux au dessus du prix d'entrée)
+        - **Long** : position acheteuse sur l'actif
+        - **Short** : position vendeuse à découvert sur l'actif
         
         *Number of Levels* définit combien de paliers d'achat/vente vous voulez.
         Chaque niveau correspondra à un prix où le système interviendra automatiquement.
         
-        *Drawdown %* contrôle l'écart entre ces niveaux de prix :
-        un pourcentage faible donnera des niveaux proches les uns des autres,
-        un pourcentage plus élevé espacera davantage les interventions.
+        *Drawdown %* contrôle l'écart et la direction des niveaux de prix :
+        - **Valeur négative** (ex: -5%) : les niveaux seront **à la baisse** (en dessous du prix d'entrée)
+          → Utile pour acheter plus bas (Long) ou couvrir des shorts en baisse
+        - **Valeur positive** (ex: +5%) : les niveaux seront **à la hausse** (au dessus du prix d'entrée)
+          → Utile pour shorter plus haut (Short) ou pyramider sur une hausse (Long)
         
-        Pour les positions Long, une valeur **positive** du drawdown sera stockée.
-        Pour les positions Short, une valeur **négative** du drawdown sera stockée.
+        Un pourcentage faible donnera des niveaux proches les uns des autres,
+        un pourcentage plus élevé espacera davantage les interventions.
         
         Quand vous cliquez sur *Add Equity*, l'outil calcule les niveaux
         à partir du prix actuel et enregistre un système en mode *Off* par défaut,
@@ -923,7 +952,7 @@ with tab3:
             levels = st.number_input("Number of Levels", min_value=1, max_value=10, value=5)
         
         with col4:
-            drawdown = st.number_input("Drawdown %", min_value=0.1, max_value=50.0, value=5.0, step=0.1)
+            drawdown = st.number_input("Drawdown %", min_value=-50.0, max_value=50.0, value=5.0, step=0.1)
         
         if st.button("➕ Add Equity", type="primary"):
             if symbol:
@@ -941,14 +970,16 @@ with tab3:
                     if entry_price > 0:
                         drawdown_decimal = drawdown / 100
                         
-                        # Long: drawdown positif, niveaux en dessous du prix d'entrée
-                        # Short: drawdown négatif, niveaux au dessus du prix d'entrée
-                        if direction == "Long":
-                            level_prices = {str(i+1): round(entry_price * (1 - drawdown_decimal * (i+1)), 2) for i in range(levels)}
-                            stored_drawdown = drawdown_decimal
-                        else:  # Short
+                        # Si drawdown négatif: niveaux à la baisse (en dessous du prix d'entrée)
+                        # Si drawdown positif: niveaux à la hausse (au dessus du prix d'entrée)
+                        if drawdown_decimal < 0:
+                            # Drawdown négatif → niveaux en dessous
                             level_prices = {str(i+1): round(entry_price * (1 + drawdown_decimal * (i+1)), 2) for i in range(levels)}
-                            stored_drawdown = -drawdown_decimal
+                        else:
+                            # Drawdown positif → niveaux au dessus
+                            level_prices = {str(i+1): round(entry_price * (1 + drawdown_decimal * (i+1)), 2) for i in range(levels)}
+                        
+                        stored_drawdown = drawdown_decimal
                         
                         equities[symbol] = {
                             "position": 0,
@@ -969,63 +1000,8 @@ with tab3:
             else:
                 st.error("Please enter a symbol")
 
-# Tab 4: AI Assistant
+# Tab 4: Trading Systems
 with tab4:
-    with st.expander("📘 Comprendre l'AI Assistant"):
-        st.markdown("""
-        ### 🤖 Ce que vous faites dans AI Assistant
-        
-        Cet onglet transforme votre portfolio en **cas d'étude vivant** pour une IA spécialisée :
-        vous lui posez des questions et elle vous répond à partir de vos données réelles.
-        
-        Le chat fonctionne comme une conversation : vos messages s'affichent à gauche,
-        ceux de l'IA à droite, et l'historique est conservé tant que la session reste ouverte.
-        
-        Vous pouvez demander une analyse de vos positions, un avis
-        sur votre niveau de diversification, ou un éclairage sur un risque spécifique.
-        
-        C'est aussi un espace pédagogique : si un concept vous échappe
-        (drawdown, corrélation, volatilité, etc.), vous pouvez demander
-        une explication contextualisée à partir de votre situation.
-        
-        La meilleure façon d'utiliser cet onglet est de **formuler vos doutes** :
-        "Qu'est-ce qui pourrait mal se passer avec mon portfolio actuel ?",
-        "Où suis-je trop exposé ?", "Qu'est-ce que je n'ai pas vu ?".
-        
-        Voyez l'IA comme un coach qui challenge vos idées,
-        pas comme une boule de cristal. Plus vos questions sont claires,
-        plus les réponses vous aideront à affiner votre propre réflexion.
-        """)
-    st.subheader("🤖 AI Portfolio Manager")
-    st.markdown("Ask questions about your portfolio and get AI-powered insights")
-    
-    # Chat history
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    
-    # Display chat history
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-    
-    # Chat input
-    if prompt := st.chat_input("Ask about your portfolio..."):
-        # Add user message
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-        
-        # Get AI response
-        with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
-                response = chatgpt_response(prompt)
-                st.markdown(response)
-        
-        # Add assistant message
-        st.session_state.messages.append({"role": "assistant", "content": response})
-
-# Tab 5: Trading Systems
-with tab5:
     with st.expander("📘 Comprendre Trading Systems"):
         st.markdown("""
         ### 📋 Ce que vous faites dans Trading Systems
@@ -1105,8 +1081,8 @@ with tab5:
     else:
         st.info("No trading systems configured. Add an equity in the 'Add Equity' tab.")
 
-# Tab 6: Options
-with tab6:
+# Tab 5: Options
+with tab5:
     with st.expander("📘 Comprendre Options"):
         st.markdown("""
         ### 🧾 Ce que vous faites dans Options
@@ -1147,25 +1123,33 @@ with tab6:
 
     options_chain = st.session_state.options_chain
 
-    if underlying_symbol and options_chain:
-        # Step 1: choose maturity T (years)
-        unique_T_values = sorted({round(c["T"], 4) for c in options_chain})
-        display_T_values = [f"{t:.2f}" for t in unique_T_values]
+    # Filter chain to current underlying only
+    filtered_chain = [
+        c for c in options_chain
+        if str(c.get("underlying", "")).upper() == underlying_symbol.upper()
+    ] if underlying_symbol and options_chain else []
 
-        selected_T_display = st.selectbox(
-            "Select maturity T (years)",
-            options=display_T_values,
-            key="opt_selected_T",
-        )
+    if underlying_symbol and filtered_chain:
+        # Step 1: choose maturity T (years) with a selectbox (unique T values, rounded to 2 decimals)
+        unique_T_values = sorted({round(float(c["T"]), 2) for c in filtered_chain})
 
-        try:
-            selected_T = float(selected_T_display)
-        except ValueError:
+        if unique_T_values:
+            display_T_values = [f"{t:.2f}" for t in unique_T_values]
+            selected_T_display = st.selectbox(
+                "Select maturity T (years)",
+                options=display_T_values,
+                key="opt_selected_T",
+            )
+            try:
+                selected_T = float(selected_T_display)
+            except ValueError:
+                selected_T = None
+        else:
             selected_T = None
 
         if selected_T is not None:
             filtered_by_T = [
-                c for c in options_chain if round(c["T"], 2) == round(selected_T, 2)
+                c for c in filtered_chain if round(c["T"], 2) == round(selected_T, 2)
             ]
 
             if filtered_by_T:
@@ -1179,29 +1163,56 @@ with tab6:
                     if not calls_for_T:
                         st.info("No call options for this maturity.")
                     else:
-                        unique_K_call = sorted({c["strike"] for c in calls_for_T})
+                        unique_K_call = sorted({float(c["strike"]) for c in calls_for_T})
                         if unique_K_call:
-                            idx_call = st.slider(
+                            # Slider directly on K values (label shows K)
+                            min_k_call = float(min(unique_K_call))
+                            max_k_call = float(max(unique_K_call))
+                            if len(unique_K_call) > 1:
+                                diffs_call = [
+                                    b - a for a, b in zip(unique_K_call[:-1], unique_K_call[1:])
+                                ]
+                                step_call = min(diffs_call)
+                            else:
+                                step_call = 1.0
+
+                            default_k_call = unique_K_call[min(
+                                len(unique_K_call) // 2, len(unique_K_call) - 1
+                            )]
+
+                            selected_k_value_call = st.slider(
                                 "Strike (K) - Call",
-                                min_value=0,
-                                max_value=len(unique_K_call) - 1,
-                                value=min(len(unique_K_call) // 2, len(unique_K_call) - 1),
-                                step=1,
-                                key="opt_call_strike_idx",
+                                min_value=min_k_call,
+                                max_value=max_k_call,
+                                value=float(default_k_call),
+                                step=float(step_call),
+                                format="%.2f",
+                                key="opt_call_strike",
                             )
-                            selected_K_call = unique_K_call[idx_call]
+
+                            # Map chosen K to nearest available strike
+                            selected_K_call = min(
+                                unique_K_call,
+                                key=lambda k: abs(k - selected_k_value_call),
+                            )
                             selected_call = next(
                                 (c for c in calls_for_T if c["strike"] == selected_K_call),
                                 None,
                             )
 
                             if selected_call:
-                                st.write(
-                                    f"Selected Call: **K = {selected_call['strike']:.2f}**, "
-                                    f"**T = {selected_call['T']:.2f}**, "
-                                    f"**Price = {selected_call['price']:.2f}**, "
-                                    f"**IV = {selected_call['iv']:.2f}**"
-                                )
+                                spot_call = float(selected_call.get("spot", 0.0) or 0.0)
+                                chips_html_call = f"""
+                                <div style='display:flex;flex-wrap:wrap;gap:0.6rem;margin-top:0.6rem;'>
+                                  <span style='background-color:#e3f2fd;color:#0d47a1;padding:6px 14px;border-radius:999px;font-size:0.9rem;font-weight:600;'>Call</span>
+                                  <span style='background-color:#fffde7;color:#f57f17;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>Spot = {spot_call:.2f}</span>
+                                  <span style='background-color:#e8f5e9;color:#1b5e20;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>T = {selected_call['T']:.2f}</span>
+                                  <span style='background-color:#fff3e0;color:#e65100;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>K = {selected_call['strike']:.2f}</span>
+                                  <span style='background-color:#f3e5f5;color:#4a148c;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>Price = {selected_call['price']:.2f}</span>
+                                  <span style='background-color:#fce4ec;color:#880e4f;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>IV = {selected_call['iv']:.2f}</span>
+                                </div>
+                                """
+                                st.markdown(chips_html_call, unsafe_allow_html=True)
 
                                 side_call = st.radio(
                                     "Position side",
@@ -1258,29 +1269,54 @@ with tab6:
                     if not puts_for_T:
                         st.info("No put options for this maturity.")
                     else:
-                        unique_K_put = sorted({c["strike"] for c in puts_for_T})
+                        unique_K_put = sorted({float(c["strike"]) for c in puts_for_T})
                         if unique_K_put:
-                            idx_put = st.slider(
+                            min_k_put = float(min(unique_K_put))
+                            max_k_put = float(max(unique_K_put))
+                            if len(unique_K_put) > 1:
+                                diffs_put = [
+                                    b - a for a, b in zip(unique_K_put[:-1], unique_K_put[1:])
+                                ]
+                                step_put = min(diffs_put)
+                            else:
+                                step_put = 1.0
+
+                            default_k_put = unique_K_put[min(
+                                len(unique_K_put) // 2, len(unique_K_put) - 1
+                            )]
+
+                            selected_k_value_put = st.slider(
                                 "Strike (K) - Put",
-                                min_value=0,
-                                max_value=len(unique_K_put) - 1,
-                                value=min(len(unique_K_put) // 2, len(unique_K_put) - 1),
-                                step=1,
-                                key="opt_put_strike_idx",
+                                min_value=min_k_put,
+                                max_value=max_k_put,
+                                value=float(default_k_put),
+                                step=float(step_put),
+                                format="%.2f",
+                                key="opt_put_strike",
                             )
-                            selected_K_put = unique_K_put[idx_put]
+
+                            selected_K_put = min(
+                                unique_K_put,
+                                key=lambda k: abs(k - selected_k_value_put),
+                            )
                             selected_put = next(
                                 (c for c in puts_for_T if c["strike"] == selected_K_put),
                                 None,
                             )
 
                             if selected_put:
-                                st.write(
-                                    f"Selected Put: **K = {selected_put['strike']:.2f}**, "
-                                    f"**T = {selected_put['T']:.2f}**, "
-                                    f"**Price = {selected_put['price']:.2f}**, "
-                                    f"**IV = {selected_put['iv']:.2f}**"
-                                )
+                                spot_put = float(selected_put.get("spot", 0.0) or 0.0)
+                                chips_html_put = f"""
+                                <div style='display:flex;flex-wrap:wrap;gap:0.6rem;margin-top:0.6rem;'>
+                                  <span style='background-color:#ffebee;color:#b71c1c;padding:6px 14px;border-radius:999px;font-size:0.9rem;font-weight:600;'>Put</span>
+                                  <span style='background-color:#fffde7;color:#f57f17;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>Spot = {spot_put:.2f}</span>
+                                  <span style='background-color:#e8f5e9;color:#1b5e20;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>T = {selected_put['T']:.2f}</span>
+                                  <span style='background-color:#fff3e0;color:#e65100;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>K = {selected_put['strike']:.2f}</span>
+                                  <span style='background-color:#ede7f6;color:#311b92;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>Price = {selected_put['price']:.2f}</span>
+                                  <span style='background-color:#e0f7fa;color:#006064;padding:6px 14px;border-radius:999px;font-size:0.9rem;'>IV = {selected_put['iv']:.2f}</span>
+                                </div>
+                                """
+                                st.markdown(chips_html_put, unsafe_allow_html=True)
 
                                 side_put = st.radio(
                                     "Position side",
@@ -1331,7 +1367,7 @@ with tab6:
                                     else:
                                         st.success("Option position updated / closed.")
 
-    elif underlying_symbol and not options_chain:
+    elif underlying_symbol and not filtered_chain:
         st.info("No European options found or failed to load chain for this symbol.")
 
 # Footer
