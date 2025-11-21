@@ -507,7 +507,7 @@ with tab1:
         for symbol, data in equities.items():
             direction = data.get('direction', 'long')  # Default to 'long' for backward compatibility
             drawdown_value = data['drawdown']
-            # Display drawdown as positive value with direction label
+            # Display drawdown as absolute value with direction label
             systems_data.append({
                 'Symbol': symbol,
                 'Direction': direction.capitalize(),
@@ -691,8 +691,8 @@ with tab3:
         de façon structurée (indice, action, ETF, crypto, etc.).
         
         *Direction* vous permet de choisir entre :
-        - **Long** : acheter sur les baisses (drawdown négatif) - le système achètera automatiquement quand le prix baisse
-        - **Short** : shorter sur les hausses (drawdown positif) - le système shortera automatiquement quand le prix monte
+        - **Long** : acheter sur les baisses - le système achètera automatiquement quand le prix baisse
+        - **Short** : shorter sur les hausses - le système shortera automatiquement quand le prix monte
         
         *Number of Levels* définit combien de paliers d'achat/short vous voulez.
         Chaque niveau correspondra à un prix différent, où le système agira automatiquement.
