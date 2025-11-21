@@ -1946,7 +1946,12 @@ def ui_asian_options(
     maturity_common,
     strike_common,
     rate_common,
+    key_prefix: str = "asian",
 ):
+    # Prefix keys to avoid clashes when the module is rendered in multiple tabs.
+    def _k(suffix: str) -> str:
+        return f"{key_prefix}_{suffix}"
+
     st.header("Options asiatiques (module Asian)")
     render_unlock_sidebar_button("tab_asian", "🔓 Réactiver T (onglet Asian)")
     render_general_definition_explainer(
@@ -2006,7 +2011,7 @@ def ui_asian_options(
 
     if st.button(
         "Calculer le prix asiatique (Call)",
-        key=_k("btn_price_asian") if "_k" in globals() else "btn_price_asian",
+        key=_k("btn_price"),
     ):
         progress = st.progress(0)
         try:
@@ -2039,14 +2044,14 @@ def ui_asian_options(
     col_k, col_t = st.columns(2)
     with col_k:
         k_center = st.session_state.get("common_strike", strike_common)
-        default_k_min = st.session_state.get("asian_k_min", max(0.01, k_center - 40.0))
-        default_k_max = st.session_state.get("asian_k_max", k_center + 40.0)
+        default_k_min = st.session_state.get(_k("k_min"), max(0.01, k_center - 40.0))
+        default_k_max = st.session_state.get(_k("k_max"), k_center + 40.0)
         k_min = st.number_input(
             "K min",
             value=float(default_k_min),
             min_value=0.01,
             step=1.0,
-            key="asian_k_min",
+            key=_k("k_min"),
             help="Borne inférieure de la plage de strikes pour les options asiatiques.",
         )
         k_max = st.number_input(
@@ -2054,20 +2059,20 @@ def ui_asian_options(
             value=float(default_k_max),
             min_value=k_min + 1.0,
             step=1.0,
-            key="asian_k_max",
+            key=_k("k_max"),
             help="Borne supérieure de la plage de strikes pour les options asiatiques.",
         )
         st.caption(f"Domaine K: [{k_min:.2f}, {k_max:.2f}]")
     with col_t:
         t_center = st.session_state.get("common_maturity", maturity_common)
-        default_t_min = st.session_state.get("asian_t_min", max(0.05, t_center / 2.0))
-        default_t_max = st.session_state.get("asian_t_max", t_center * 2.0)
+        default_t_min = st.session_state.get(_k("t_min"), max(0.05, t_center / 2.0))
+        default_t_max = st.session_state.get(_k("t_max"), t_center * 2.0)
         t_min = st.number_input(
             "T min (années)",
             value=float(default_t_min),
             min_value=0.01,
             step=0.05,
-            key="asian_t_min",
+            key=_k("t_min"),
             help="Maturité minimale de la surface asiatique (en années).",
         )
         t_max = st.number_input(
@@ -2075,14 +2080,14 @@ def ui_asian_options(
             value=float(default_t_max),
             min_value=t_min + 0.01,
             step=0.05,
-            key="asian_t_max",
+            key=_k("t_max"),
             help="Maturité maximale de la surface asiatique (en années).",
         )
         st.caption(f"Domaine T: [{t_min:.2f}, {t_max:.2f}]")
 
-    n_k = st.slider("Résolution en K", 10, 40, 20, 2, key="asian_n_k")
-    n_t = st.slider("Résolution en T", 10, 40, 20, 2, key="asian_n_t")
-    n_paths_surface = st.slider("Nombre de trajectoires Monte Carlo", 5_000, 50_000, 20_000, 5_000, key="asian_n_paths")
+    n_k = st.slider("Résolution en K", 10, 40, 20, 2, key=_k("n_k"))
+    n_t = st.slider("Résolution en T", 10, 40, 20, 2, key=_k("n_t"))
+    n_paths_surface = st.slider("Nombre de trajectoires Monte Carlo", 5_000, 50_000, 20_000, 5_000, key=_k("n_paths"))
 
     k_vals = np.linspace(k_min, k_max, n_k)
     t_vals = np.linspace(t_min, t_max, n_t)
@@ -3398,25 +3403,6 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
         )
         cpflag_am = option_label
         cpflag_am_char = option_char
-        st.caption(
-            "Les heatmaps affichent les prix call / put sur un carré Spot × Strike centré autour du spot défini dans la barre latérale."
-        )
-
-        st.subheader("Paramètres Monte Carlo communs")
-        mc_n_paths = st.number_input(
-            "Trajectoires Monte Carlo (Heston / GBM)",
-            value=1000,
-            min_value=100,
-            key=_k("n_paths_am_common"),
-            help="Nombre de trajectoires utilisées pour les pricers américains (Heston et GBM).",
-        )
-        mc_n_steps = st.number_input(
-            "Pas de temps (Heston / GBM)",
-            value=50,
-            min_value=1,
-            key=_k("n_steps_am_common"),
-            help="Nombre de dates intermédiaires possibles d’exercice (Heston et GBM).",
-        )
 
         st.subheader("Longstaff–Schwartz (Heston)")
         render_method_explainer(
@@ -3427,8 +3413,20 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
             ),
         )
         heston_ready = bool(st.session_state.get("heston_cboe_loaded_once", False))
-        n_paths_am_hes = mc_n_paths
-        n_steps_am_hes = mc_n_steps
+        n_paths_am_hes = st.number_input(
+            "Trajectoires Monte Carlo (Heston)",
+            value=1000,
+            min_value=100,
+            key=_k("n_paths_am_hes"),
+            disabled=not heston_ready,
+        )
+        n_steps_am_hes = st.number_input(
+            "Pas de temps (Heston)",
+            value=50,
+            min_value=1,
+            key=_k("n_steps_am_hes"),
+            disabled=not heston_ready,
+        )
         v0_am_hes = None
         process_am_hes = None
         if heston_ready:
@@ -3473,11 +3471,6 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                 st.error(f"Erreur Longstaff–Schwartz Heston : {exc}")
             finally:
                 progress.empty()
-        st.caption(
-            f"Paramètres Heston L-S : S0={S0_common:.4f}, K={K_common:.4f}, T={T_common:.4f}, "
-            f"r={r_common:.4f}, d={d_common:.4f}, σ={sigma_common:.4f}, "
-            f"N_paths={int(mc_n_paths)}, N_steps={int(mc_n_steps)}"
-        )
         with st.expander("Heatmap Heston (L-S)", expanded=False):
             if heston_ready:
                 with st.spinner("Calcul des heatmaps Heston L-S"):
@@ -3509,8 +3502,18 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                 "- Simulation GBM (volatilité constante) + régression backward.\n"
             ),
         )
-        n_paths_am_gbm = mc_n_paths
-        n_steps_am_gbm = mc_n_steps
+        n_paths_am_gbm = st.number_input(
+            "Trajectoires Monte Carlo (GBM)",
+            value=1000,
+            min_value=100,
+            key=_k("n_paths_am_gbm"),
+        )
+        n_steps_am_gbm = st.number_input(
+            "Pas de temps (GBM)",
+            value=50,
+            min_value=1,
+            key=_k("n_steps_am_gbm"),
+        )
         process_am_gbm = GeometricBrownianMotion(mu=r_common - d_common, sigma=sigma_common)
 
         if st.button(
@@ -3539,11 +3542,6 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                 st.error(f"Erreur Longstaff–Schwartz GBM : {exc}")
             finally:
                 progress.empty()
-        st.caption(
-            f"Paramètres GBM L-S : S0={S0_common:.4f}, K={K_common:.4f}, T={T_common:.4f}, "
-            f"r={r_common:.4f}, d={d_common:.4f}, σ={sigma_common:.4f}, "
-            f"N_paths={int(mc_n_paths)}, N_steps={int(mc_n_steps)}"
-        )
         with st.expander("Heatmap GBM (L-S)", expanded=False):
             with st.spinner("Calcul des heatmaps GBM L-S"):
                 call_heatmap_ls, put_heatmap_ls = _compute_american_ls_heatmaps(
@@ -3655,154 +3653,152 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
         st.caption(
             "Les heatmaps affichent les prix lookback sur un carré Spot × Maturité centré autour des valeurs définies dans la barre latérale."
         )
-    
-        tab_lb_exact, tab_lb_mc = st.tabs(["Exacte", "Monte Carlo"])
-    
-        with tab_lb_exact:
-            st.subheader("Formule exacte")
-            render_method_explainer(
-                "📗 Méthode analytique pour lookback",
-                (
-                    "- **Étape 1 – Choix du modèle sous‑jacent** : on se place dans le cadre Black–Scholes standard avec volatilité constante `σ`, taux sans risque `r` et éventuellement dividende continu. Le sous‑jacent suit un mouvement brownien géométrique.\n"
-                    "- **Étape 2 – Caractérisation des extrêmes** : on utilise des résultats de théorie des processus stochastiques sur la distribution du maximum (ou minimum) d’un mouvement brownien géométrique sur un horizon `[0, T]`.\n"
-                    "- **Étape 3 – Réécriture du payoff** : le payoff lookback (par exemple basé sur `max_t S_t` ou `min_t S_t`) est réécrit de manière à isoler des termes qui ressemblent à des payoffs d’options européennes classiques, plus des termes correctifs dépendant des extrêmes.\n"
-                    "- **Étape 4 – Intégration analytique** : à partir de cette réécriture, on calcule l’espérance neutre au risque de ce payoff en intégrant par rapport aux densités des extrêmes et du sous‑jacent. On obtient des formules fermées impliquant des fonctions de répartition de la loi normale et des combinaisons exponentielles.\n"
-                    "- **Étape 5 – Implémentation numérique** : les formules fermées sont implémentées sous forme de fonctions vectorisées qui prennent en entrée `(S0, T, σ, r, …)` et renvoient directement le prix de l’option lookback pour chaque point de la grille Spot × Maturité.\n"
-                    "- **Étape 6 – Construction de la heatmap** : pour chaque valeur de `S0` et `T` de la grille, la formule analytique est évaluée, ce qui remplit une matrice de prix. Cette matrice est ensuite affichée sous forme de carte de chaleur.\n"
-                    "- **Étape 7 – Rôle de benchmark** : cette solution analytique sert de référence \"exacte\" pour valider la méthode Monte Carlo : en comparant les deux surfaces, on quantifie l’erreur de simulation et on ajuste le nombre d’itérations ou la granularité temporelle si nécessaire."
-                ),
+
+        st.subheader("Formule exacte")
+        render_method_explainer(
+            "📗 Méthode analytique pour lookback",
+            (
+                "- **Étape 1 – Choix du modèle sous‑jacent** : on se place dans le cadre Black–Scholes standard avec volatilité constante `σ`, taux sans risque `r` et éventuellement dividende continu. Le sous‑jacent suit un mouvement brownien géométrique.\n"
+                "- **Étape 2 – Caractérisation des extrêmes** : on utilise des résultats de théorie des processus stochastiques sur la distribution du maximum (ou minimum) d’un mouvement brownien géométrique sur un horizon `[0, T]`.\n"
+                "- **Étape 3 – Réécriture du payoff** : le payoff lookback (par exemple basé sur `max_t S_t` ou `min_t S_t`) est réécrit de manière à isoler des termes qui ressemblent à des payoffs d’options européennes classiques, plus des termes correctifs dépendant des extrêmes.\n"
+                "- **Étape 4 – Intégration analytique** : à partir de cette réécriture, on calcule l’espérance neutre au risque de ce payoff en intégrant par rapport aux densités des extrêmes et du sous‑jacent. On obtient des formules fermées impliquant des fonctions de répartition de la loi normale et des combinaisons exponentielles.\n"
+                "- **Étape 5 – Implémentation numérique** : les formules fermées sont implémentées sous forme de fonctions vectorisées qui prennent en entrée `(S0, T, σ, r, …)` et renvoient directement le prix de l’option lookback pour chaque point de la grille Spot × Maturité.\n"
+                "- **Étape 6 – Construction de la heatmap** : pour chaque valeur de `S0` et `T` de la grille, la formule analytique est évaluée, ce qui remplit une matrice de prix. Cette matrice est ensuite affichée sous forme de carte de chaleur.\n"
+                "- **Étape 7 – Rôle de benchmark** : cette solution analytique sert de référence \"exacte\" pour valider la méthode Monte Carlo : en comparant les deux surfaces, on quantifie l’erreur de simulation et on ajuste le nombre d’itérations ou la granularité temporelle si nécessaire."
+            ),
+        )
+        render_inputs_explainer(
+            "🔧 Paramètres utilisés – Lookback exact",
+            (
+                "- **\"S0 (spot)\"** : fixe le centre de l’axe des spots de la heatmap sur lequel la formule exacte est évaluée.\n"
+                "- **\"T (maturité, années)\"** : fournit les maturités à partir desquelles on construit l’axe vertical de la heatmap.\n"
+                "- **\"t (temps courant)\"** : champ numérique permettant de considérer une option lookback déjà en cours de vie (temps écoulé depuis l’émission).\n"
+                "- **\"Taux sans risque r\"** : utilisé pour actualiser l’espérance du payoff dans la formule fermée.\n"
+                "- **\"Volatilité σ\"** : volatilité constante supposée par le modèle BSM sous‑jacent."
+            ),
+        )
+        t0_lb = st.number_input(
+            "t (temps courant)",
+            value=0.0,
+            min_value=0.0,
+            key=_k("t0_lb_exact"),
+            help="Temps déjà écoulé depuis l’émission de l’option lookback (en années).",
+        )
+        r_lb = max(r_common, 1e-6)
+        if st.button(
+            "Calculer le prix lookback exact",
+            key=_k("btn_price_lb_exact"),
+        ):
+            try:
+                lookback_opt = lookback_call_option(
+                    T=float(T_common),
+                    t=float(t0_lb),
+                    S0=float(common_spot_value),
+                    r=float(r_lb),
+                    sigma=float(sigma_common),
+                )
+                price_lb_exact = float(lookback_opt.price_exact())
+                st.success(f"Prix lookback (formule exacte) = {price_lb_exact:.6f}")
+            except Exception as exc:
+                st.error(f"Erreur lookback (formule exacte) : {exc}")
+        st.caption(
+            f"Paramètres utilisés pour le prix lookback exact : "
+            f"S0={common_spot_value:.4f}, T={T_common:.4f}, r={r_lb:.4f}, σ={sigma_common:.4f}, t={t0_lb:.4f}"
+        )
+        with st.spinner("Calcul de la heatmap exacte"):
+            heatmap_lb_exact = _compute_lookback_exact_heatmap(
+                heatmap_spot_values,
+                heatmap_maturity_values,
+                t0_lb,
+                r_lb,
+                sigma_common,
             )
-            render_inputs_explainer(
-                "🔧 Paramètres utilisés – Lookback exact",
-                (
-                    "- **\"S0 (spot)\"** : fixe le centre de l’axe des spots de la heatmap sur lequel la formule exacte est évaluée.\n"
-                    "- **\"T (maturité, années)\"** : fournit les maturités à partir desquelles on construit l’axe vertical de la heatmap.\n"
-                    "- **\"t (temps courant)\"** : champ numérique permettant de considérer une option lookback déjà en cours de vie (temps écoulé depuis l’émission).\n"
-                    "- **\"Taux sans risque r\"** : utilisé pour actualiser l’espérance du payoff dans la formule fermée.\n"
-                    "- **\"Volatilité σ\"** : volatilité constante supposée par le modèle BSM sous‑jacent."
-                ),
-            )
-            t0_lb = st.number_input(
-                "t (temps courant)",
-                value=0.0,
-                min_value=0.0,
-                key=_k("t0_lb_exact"),
-                help="Temps déjà écoulé depuis l’émission de l’option lookback (en années).",
-            )
-            r_lb = max(r_common, 1e-6)
-            if st.button(
-                "Calculer le prix lookback exact",
-                key=_k("btn_price_lb_exact"),
-            ):
-                try:
-                    lookback_opt = lookback_call_option(
-                        T=float(T_common),
-                        t=float(t0_lb),
-                        S0=float(common_spot_value),
-                        r=float(r_lb),
-                        sigma=float(sigma_common),
-                    )
-                    price_lb_exact = float(lookback_opt.price_exact())
-                    st.success(f"Prix lookback (formule exacte) = {price_lb_exact:.6f}")
-                except Exception as exc:
-                    st.error(f"Erreur lookback (formule exacte) : {exc}")
-            st.caption(
-                f"Paramètres utilisés pour le prix lookback exact : "
-                f"S0={common_spot_value:.4f}, T={T_common:.4f}, r={r_lb:.4f}, σ={sigma_common:.4f}, t={t0_lb:.4f}"
-            )
-            with st.spinner("Calcul de la heatmap exacte"):
-                heatmap_lb_exact = _compute_lookback_exact_heatmap(
+        st.write("Heatmap Lookback (formule exacte)")
+        _render_heatmap(heatmap_lb_exact, heatmap_spot_values, heatmap_maturity_values, "Prix Lookback (Exact)")
+
+        st.divider()
+
+        st.subheader("Monte Carlo lookback")
+        render_method_explainer(
+            "🎲 Méthode Monte Carlo pour lookback",
+            (
+                "- **Étape 1 – Grille temporelle** : on découpe l’horizon `[0, T]` en un certain nombre de pas de temps. Plus la grille est fine, mieux on détecte les extrêmes du sous‑jacent.\n"
+                "- **Étape 2 – Simulation des trajectoires** : on simule, sous la mesure neutre au risque, de nombreuses trajectoires `S_t` via un GBM avec volatilité constante `σ`, en appliquant à chaque pas un choc gaussien.\n"
+                "- **Étape 3 – Suivi de l’extrême** : pour chaque trajectoire, on met à jour à chaque pas le maximum (ou le minimum) atteint jusqu’alors. Cette valeur représente l’\"historique condensé\" de la trajectoire pour le payoff lookback.\n"
+                "- **Étape 4 – Évaluation du payoff** : à la date finale, on calcule le payoff en fonction de cet extrême (par exemple `max(M_T - K, 0)` où `M_T = max_{0≤t≤T} S_t`), ou les variantes floating strike selon le type de contrat.\n"
+                "- **Étape 5 – Actualisation** : on actualise le payoff obtenu sur chaque trajectoire au taux sans risque `r_common` jusqu’à la date présente.\n"
+                "- **Étape 6 – Moyenne Monte Carlo** : le prix est obtenu en moyennant ces payoffs actualisés sur l’ensemble des trajectoires simulées.\n"
+                "- **Étape 7 – Construction de la heatmap** : on répète l’algorithme pour toutes les combinaisons `(S0, T)` de la grille, de sorte à remplir une matrice de prix lookback Monte Carlo comparable à la surface analytique.\n"
+                "- **Étape 8 – Analyse d’erreur** : en comparant cette surface MC à la surface exacte, on évalue la qualité de la simulation (variabilité statistique, biais de discretisation des extrêmes) et on ajuste `n_iters_lb` ou la taille des pas de temps si nécessaire."
+            ),
+        )
+        render_inputs_explainer(
+            "🔧 Paramètres utilisés – Lookback Monte Carlo",
+            (
+                "- **\"S0 (spot)\"** : centre de l’axe des spots sur lequel les trajectoires lookback sont simulées.\n"
+                "- **\"T (maturité, années)\"** : ensemble des maturités pour lesquelles on simule les trajectoires et construit la heatmap.\n"
+                "- **\"t (temps courant) MC\"** : temps déjà écoulé avant le début de la période de simulation, pour traiter des options en cours de vie.\n"
+                "- **\"Taux sans risque r\"** : intervient dans le drift neutre au risque et l’actualisation des payoffs.\n"
+                "- **\"Volatilité σ\"** : volatilité supposée constante dans les trajectoires Monte Carlo.\n"
+                "- **\"Itérations Monte Carlo\"** : nombre de trajectoires simulées pour chaque couple `(S0, T)`."
+            ),
+        )
+        t0_lb_mc = st.number_input(
+            "t (temps courant) MC",
+            value=0.0,
+            min_value=0.0,
+            key=_k("t0_lb_mc"),
+            help="Temps déjà écoulé avant la période de simulation Monte Carlo (en années).",
+        )
+        n_iters_lb = st.number_input(
+            "Itérations Monte Carlo",
+            value=1000,
+            min_value=100,
+            key=_k("n_iters_lb_mc"),
+            help="Nombre de trajectoires lookback simulées pour chaque couple (S0, T).",
+        )
+        r_lb_mc = max(r_common, 1e-6)
+        if st.button(
+            "Calculer le prix lookback MC",
+            key=_k("btn_price_lb_mc"),
+        ):
+            progress = st.progress(0)
+            try:
+                lookback_opt_mc = lookback_call_option(
+                    T=float(T_common),
+                    t=float(t0_lb_mc),
+                    S0=float(common_spot_value),
+                    r=float(r_lb_mc),
+                    sigma=float(sigma_common),
+                )
+                progress.progress(40)
+                price_lb_mc = float(lookback_opt_mc.price_monte_carlo(int(n_iters_lb)))
+                progress.progress(80)
+                st.success(f"Prix lookback (Monte Carlo) = {price_lb_mc:.6f}")
+            except Exception as exc:
+                st.error(f"Erreur lookback Monte Carlo : {exc}")
+            finally:
+                progress.empty()
+        st.caption(
+            f"Paramètres utilisés pour le prix lookback MC : "
+            f"S0={common_spot_value:.4f}, T={T_common:.4f}, r={r_lb_mc:.4f}, σ={sigma_common:.4f}, "
+            f"t={t0_lb_mc:.4f}, N_iters={int(n_iters_lb)}"
+        )
+        if st.checkbox("Afficher la heatmap Lookback (Monte Carlo)", value=False, key=_k("show_lb_mc_heatmap")):
+            progress = st.progress(0)
+            with st.spinner("Calcul de la heatmap Monte Carlo"):
+                heatmap_lb_mc = _compute_lookback_mc_heatmap(
                     heatmap_spot_values,
                     heatmap_maturity_values,
-                    t0_lb,
-                    r_lb,
+                    t0_lb_mc,
+                    r_lb_mc,
                     sigma_common,
+                    int(n_iters_lb),
                 )
-            st.write("Heatmap Lookback (formule exacte)")
-            _render_heatmap(heatmap_lb_exact, heatmap_spot_values, heatmap_maturity_values, "Prix Lookback (Exact)")
-    
-        with tab_lb_mc:
-            st.subheader("Monte Carlo lookback")
-            render_method_explainer(
-                "🎲 Méthode Monte Carlo pour lookback",
-                (
-                    "- **Étape 1 – Grille temporelle** : on découpe l’horizon `[0, T]` en un certain nombre de pas de temps. Plus la grille est fine, mieux on détecte les extrêmes du sous‑jacent.\n"
-                    "- **Étape 2 – Simulation des trajectoires** : on simule, sous la mesure neutre au risque, de nombreuses trajectoires `S_t` via un GBM avec volatilité constante `σ`, en appliquant à chaque pas un choc gaussien.\n"
-                    "- **Étape 3 – Suivi de l’extrême** : pour chaque trajectoire, on met à jour à chaque pas le maximum (ou le minimum) atteint jusqu’alors. Cette valeur représente l’\"historique condensé\" de la trajectoire pour le payoff lookback.\n"
-                    "- **Étape 4 – Évaluation du payoff** : à la date finale, on calcule le payoff en fonction de cet extrême (par exemple `max(M_T - K, 0)` où `M_T = max_{0≤t≤T} S_t`), ou les variantes floating strike selon le type de contrat.\n"
-                    "- **Étape 5 – Actualisation** : on actualise le payoff obtenu sur chaque trajectoire au taux sans risque `r_common` jusqu’à la date présente.\n"
-                    "- **Étape 6 – Moyenne Monte Carlo** : le prix est obtenu en moyennant ces payoffs actualisés sur l’ensemble des trajectoires simulées.\n"
-                    "- **Étape 7 – Construction de la heatmap** : on répète l’algorithme pour toutes les combinaisons `(S0, T)` de la grille, de sorte à remplir une matrice de prix lookback Monte Carlo comparable à la surface analytique.\n"
-                    "- **Étape 8 – Analyse d’erreur** : en comparant cette surface MC à la surface exacte, on évalue la qualité de la simulation (variabilité statistique, biais de discretisation des extrêmes) et on ajuste `n_iters_lb` ou la taille des pas de temps si nécessaire."
-                ),
-            )
-            render_inputs_explainer(
-                "🔧 Paramètres utilisés – Lookback Monte Carlo",
-                (
-                    "- **\"S0 (spot)\"** : centre de l’axe des spots sur lequel les trajectoires lookback sont simulées.\n"
-                    "- **\"T (maturité, années)\"** : ensemble des maturités pour lesquelles on simule les trajectoires et construit la heatmap.\n"
-                    "- **\"t (temps courant) MC\"** : temps déjà écoulé avant le début de la période de simulation, pour traiter des options en cours de vie.\n"
-                    "- **\"Taux sans risque r\"** : intervient dans le drift neutre au risque et l’actualisation des payoffs.\n"
-                    "- **\"Volatilité σ\"** : volatilité supposée constante dans les trajectoires Monte Carlo.\n"
-                    "- **\"Itérations Monte Carlo\"** : nombre de trajectoires simulées pour chaque couple `(S0, T)`."
-                ),
-            )
-            t0_lb_mc = st.number_input(
-                "t (temps courant) MC",
-                value=0.0,
-                min_value=0.0,
-                key=_k("t0_lb_mc"),
-                help="Temps déjà écoulé avant la période de simulation Monte Carlo (en années).",
-            )
-            n_iters_lb = st.number_input(
-                "Itérations Monte Carlo",
-                value=1000,
-                min_value=100,
-                key=_k("n_iters_lb_mc"),
-                help="Nombre de trajectoires lookback simulées pour chaque couple (S0, T).",
-            )
-            r_lb_mc = max(r_common, 1e-6)
-            if st.button(
-                "Calculer le prix lookback MC",
-                key=_k("btn_price_lb_mc"),
-            ):
-                progress = st.progress(0)
-                try:
-                    lookback_opt_mc = lookback_call_option(
-                        T=float(T_common),
-                        t=float(t0_lb_mc),
-                        S0=float(common_spot_value),
-                        r=float(r_lb_mc),
-                        sigma=float(sigma_common),
-                    )
-                    progress.progress(40)
-                    price_lb_mc = float(lookback_opt_mc.price_monte_carlo(int(n_iters_lb)))
-                    progress.progress(80)
-                    st.success(f"Prix lookback (Monte Carlo) = {price_lb_mc:.6f}")
-                except Exception as exc:
-                    st.error(f"Erreur lookback Monte Carlo : {exc}")
-                finally:
-                    progress.empty()
-            st.caption(
-                f"Paramètres utilisés pour le prix lookback MC : "
-                f"S0={common_spot_value:.4f}, T={T_common:.4f}, r={r_lb_mc:.4f}, σ={sigma_common:.4f}, "
-                f"t={t0_lb_mc:.4f}, N_iters={int(n_iters_lb)}"
-            )
-            if st.checkbox("Afficher la heatmap Lookback (Monte Carlo)", value=False, key=_k("show_lb_mc_heatmap")):
-                progress = st.progress(0)
-                with st.spinner("Calcul de la heatmap Monte Carlo"):
-                    heatmap_lb_mc = _compute_lookback_mc_heatmap(
-                        heatmap_spot_values,
-                        heatmap_maturity_values,
-                        t0_lb_mc,
-                        r_lb_mc,
-                        sigma_common,
-                        int(n_iters_lb),
-                    )
-                    progress.progress(100)
-                st.write("Heatmap Lookback (Monte Carlo)")
-                _render_heatmap(heatmap_lb_mc, heatmap_spot_values, heatmap_maturity_values, "Prix Lookback (MC)")
-                progress.empty()
+                progress.progress(100)
+            st.write("Heatmap Lookback (Monte Carlo)")
+            _render_heatmap(heatmap_lb_mc, heatmap_spot_values, heatmap_maturity_values, "Prix Lookback (MC)")
+            progress.empty()
     
     
     with tab_barrier:
@@ -4251,6 +4247,7 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
             maturity_common=common_maturity_value,
             strike_common=common_strike_value,
             rate_common=common_rate_value,
+            key_prefix=_k("asian"),
         )
 
 tab_call, tab_put = st.tabs(["Call", "Put"])
