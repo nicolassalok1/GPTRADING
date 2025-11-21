@@ -3049,15 +3049,43 @@ else:
                 name="Close",
             )
         )
+        # Ensure datetime index for proper ticks
+        idx_dt = pd.to_datetime(hist_df.index)
+        start_dt = idx_dt.min()
+        end_dt = idx_dt.max()
+        start_label = start_dt.strftime("%Y-%m-%d") if hasattr(start_dt, "strftime") else str(start_dt)
+        end_label = end_dt.strftime("%Y-%m-%d") if hasattr(end_dt, "strftime") else str(end_dt)
+
         hist_fig.update_layout(
             title=f"{tkr_hist} - Close (1 an)",
             xaxis_title="Date",
             yaxis_title="Prix",
-            xaxis=dict(
-                type="date",
-                tickformat="%d/%m/%Y",
-                ticklabelmode="period",
-            ),
+            shapes=[
+                dict(
+                    type="line",
+                    x0=0,
+                    x1=1,
+                    y0=K_common,
+                    y1=K_common,
+                    xref="paper",
+                    yref="y",
+                    line=dict(color="red", width=2, dash="dash"),
+                )
+            ],
+            annotations=[
+                dict(
+                    x=hist_df.index.max(),
+                    y=K_common,
+                    xanchor="left",
+                    yanchor="bottom",
+                    text=f"K = {K_common:.2f}",
+                    showarrow=True,
+                    arrowhead=1,
+                    ax=20,
+                    ay=0,
+                    font=dict(color="red"),
+                )
+            ],
         )
         st.plotly_chart(hist_fig, use_container_width=True)
     else:
