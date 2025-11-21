@@ -12,5 +12,5 @@ torch
 requests
 openai
 alpaca-trade-api
-alpha-vantage
+alpha_vantage==2.3.1
 python-dotenv
