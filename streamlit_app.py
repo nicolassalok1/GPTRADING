@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 import pandas as pd
 import requests
 import datetime
+import math
 
 # Configuration
 DATA_FILE = "equities.json"
@@ -421,6 +422,31 @@ def fetch_options_chain(symbol):
         st.error(f"Error fetching options from CBOE for {symbol}: {e}")
         return []
 
+
+def norm_cdf(x: float) -> float:
+    """Cumulative distribution function for the standard normal."""
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def black_scholes_price(S: float, K: float, T: float, r: float, sigma: float, option_type: str) -> float:
+    """
+    Black-Scholes price for a European option.
+    option_type: "call" or "put"
+    """
+    if S <= 0 or K <= 0 or T <= 0 or sigma <= 0:
+        if option_type == "call":
+            return max(S - K, 0.0)
+        else:
+            return max(K - S, 0.0)
+
+    d1 = (math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * math.sqrt(T))
+    d2 = d1 - sigma * math.sqrt(T)
+
+    if option_type == "call":
+        return S * norm_cdf(d1) - K * math.exp(-r * T) * norm_cdf(d2)
+    else:
+        return K * math.exp(-r * T) * norm_cdf(-d2) - S * norm_cdf(-d1)
+
 def chatgpt_response(message: str):
     try:
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -686,20 +712,219 @@ with tab1:
         st.markdown("### 📂 Options Portfolio")
         options_portfolio = load_options_portfolio()
         if options_portfolio:
+            # Fetch CBOE chains per underlying to derive spot, IV and T
+            underlyings = sorted({
+                pos.get("underlying")
+                for pos in options_portfolio.values()
+                if pos.get("underlying")
+            })
+            chains_by_underlying = {}
+            for und in underlyings:
+                chain_list = fetch_options_chain(und)
+                chains_by_underlying[und] = {
+                    "by_symbol": {c["symbol"]: c for c in chain_list},
+                    "list": chain_list,
+                }
+
             options_rows = []
+            st.markdown("#### Current option positions")
             for contract_symbol, pos in options_portfolio.items():
+                underlying = pos.get("underlying")
+                option_type = pos.get("type", "").lower()
+                strike = float(pos.get("strike", 0.0) or 0.0)
+                quantity = int(pos.get("quantity", 0) or 0)
+                avg_price = float(pos.get("avg_price", 0.0) or 0.0)
+                side = pos.get("side", "long").lower()
+
+                chain_bucket = chains_by_underlying.get(underlying, {})
+                chain_map = chain_bucket.get("by_symbol", {})
+                chain_list = chain_bucket.get("list", [])
+                chain_entry = chain_map.get(contract_symbol)
+
+                # Market data for pricing
+                if chain_entry:
+                    S = float(chain_entry.get("spot", 0.0) or 0.0)
+                    sigma = float(chain_entry.get("iv", 0.0) or 0.0)
+                    T = float(chain_entry.get("T", 0.0) or 0.0)
+                else:
+                    # Try to approximate T from expiration
+                    try:
+                        expiry_date = datetime.date.fromisoformat(pos.get("expiration"))
+                        days_to_expiry = (expiry_date - datetime.date.today()).days
+                        target_T = max(days_to_expiry, 0) / 365.0
+                    except Exception:
+                        target_T = None
+
+                    if chain_list and target_T is not None and strike > 0:
+                        # Use nearest option in (T, K) space to infer IV and spot
+                        nearest = None
+                        best_score = float("inf")
+                        for c in chain_list:
+                            cT = float(c.get("T", 0.0) or 0.0)
+                            cK = float(c.get("strike", 0.0) or 0.0)
+                            scale = max(strike, 1.0)
+                            score = abs(cT - target_T) + abs(cK - strike) / scale
+                            if score < best_score:
+                                best_score = score
+                                nearest = c
+
+                        if nearest:
+                            S = float(nearest.get("spot", 0.0) or 0.0)
+                            sigma = float(nearest.get("iv", 0.0) or 0.0)
+                            T = float(nearest.get("T", target_T) or target_T)
+                        else:
+                            price_data = get_data(underlying) if underlying else {"price": 0}
+                            S = float(price_data.get("price", 0.0) or 0.0)
+                            sigma = 0.2
+                            T = target_T or 0.0
+                    else:
+                        price_data = get_data(underlying) if underlying else {"price": 0}
+                        S = float(price_data.get("price", 0.0) or 0.0)
+                        sigma = 0.2
+                        T = target_T or 0.0
+
+                r = 0.0
+                if S > 0 and strike > 0 and T >= 0:
+                    bs_price = black_scholes_price(S, strike, T, r, max(sigma, 1e-6), option_type)
+                else:
+                    bs_price = 0.0
+
+                if side == "long":
+                    pnl_per_unit = bs_price - avg_price
+                else:
+                    pnl_per_unit = avg_price - bs_price
+                total_pnl_opt = pnl_per_unit * quantity
+
                 options_rows.append({
                     "Contract": contract_symbol,
-                    "Underlying": pos.get("underlying"),
-                    "Type": pos.get("type", "").capitalize(),
-                    "Side": pos.get("side", "long").capitalize(),
-                    "Strike": pos.get("strike"),
+                    "Underlying": underlying,
+                    "Type": option_type.capitalize(),
+                    "Side": side.capitalize(),
+                    "Strike": strike,
                     "Expiration": pos.get("expiration"),
-                    "Quantity": pos.get("quantity"),
-                    "Avg Price": f"${pos.get('avg_price', 0):.4f}",
+                    "Quantity": quantity,
+                    "Avg Price": f"${avg_price:.4f}",
+                    "Model Price": f"${bs_price:.4f}",
+                    "Model P&L": f"${total_pnl_opt:.2f}",
                 })
-            df_options = pd.DataFrame(options_rows)
-            st.dataframe(df_options, width="stretch", hide_index=True)
+
+            if options_rows:
+                df_options = pd.DataFrame(options_rows)
+                st.dataframe(df_options, width="stretch", hide_index=True)
+
+                st.markdown("#### Manage options (resell using model price)")
+                for contract_symbol, pos in options_portfolio.items():
+                    underlying = pos.get("underlying")
+                    option_type = pos.get("type", "").lower()
+                    strike = float(pos.get("strike", 0.0) or 0.0)
+                    quantity = int(pos.get("quantity", 0) or 0)
+                    avg_price = float(pos.get("avg_price", 0.0) or 0.0)
+                    side = pos.get("side", "long").lower()
+
+                    if quantity <= 0:
+                        continue
+
+                    chain_bucket = chains_by_underlying.get(underlying, {})
+                    chain_map = chain_bucket.get("by_symbol", {})
+                    chain_list = chain_bucket.get("list", [])
+                    chain_entry = chain_map.get(contract_symbol)
+                    cboe_source = None
+
+                    if chain_entry:
+                        S = float(chain_entry.get("spot", 0.0) or 0.0)
+                        sigma = float(chain_entry.get("iv", 0.0) or 0.0)
+                        T = float(chain_entry.get("T", 0.0) or 0.0)
+                        cboe_source = chain_entry
+                    else:
+                        try:
+                            expiry_date = datetime.date.fromisoformat(pos.get("expiration"))
+                            days_to_expiry = (expiry_date - datetime.date.today()).days
+                            target_T = max(days_to_expiry, 0) / 365.0
+                        except Exception:
+                            target_T = None
+
+                        if chain_list and target_T is not None and strike > 0:
+                            nearest = None
+                            best_score = float("inf")
+                            for c in chain_list:
+                                cT = float(c.get("T", 0.0) or 0.0)
+                                cK = float(c.get("strike", 0.0) or 0.0)
+                                scale = max(strike, 1.0)
+                                score = abs(cT - target_T) + abs(cK - strike) / scale
+                                if score < best_score:
+                                    best_score = score
+                                    nearest = c
+
+                            if nearest:
+                                S = float(nearest.get("spot", 0.0) or 0.0)
+                                sigma = float(nearest.get("iv", 0.0) or 0.0)
+                                T = float(nearest.get("T", target_T) or target_T)
+                                cboe_source = nearest
+                            else:
+                                price_data = get_data(underlying) if underlying else {"price": 0}
+                                S = float(price_data.get("price", 0.0) or 0.0)
+                                sigma = 0.2
+                                T = target_T or 0.0
+                        else:
+                            price_data = get_data(underlying) if underlying else {"price": 0}
+                            S = float(price_data.get("price", 0.0) or 0.0)
+                            sigma = 0.2
+                            T = target_T or 0.0
+
+                    r = 0.0
+                    if S > 0 and strike > 0 and T >= 0:
+                        bs_price = black_scholes_price(S, strike, T, r, max(sigma, 1e-6), option_type)
+                    else:
+                        bs_price = 0.0
+
+                    if side == "long":
+                        pnl_per_unit = bs_price - avg_price
+                        action_label = "Sell to close"
+                        closing_side = "short"
+                    else:
+                        pnl_per_unit = avg_price - bs_price
+                        action_label = "Buy to close"
+                        closing_side = "long"
+
+                    total_pnl_opt = pnl_per_unit * quantity
+
+                    with st.expander(f"{contract_symbol} ({side.capitalize()})"):
+                        col_a, col_b, col_c = st.columns(3)
+                        with col_a:
+                            st.metric("Model Price", f"${bs_price:.4f}")
+                            st.caption(
+                                f"S = {S:.2f} | K = {strike:.2f} | "
+                                f"T = {T:.2f} | σ = {sigma*100:.2f}%"
+                            )
+                            if cboe_source:
+                                st.caption("CBOE row used for σ / T / S:")
+                                st.json(cboe_source)
+                        with col_b:
+                            st.metric("Avg Price", f"${avg_price:.4f}")
+                        with col_c:
+                            st.metric(
+                                "PnL if closed",
+                                f"${total_pnl_opt:.2f}",
+                                delta=f"{(pnl_per_unit / avg_price * 100):.2f}%" if avg_price > 0 else None,
+                            )
+
+                        if st.button(f"✅ {action_label} (all)", key=f"close_opt_{contract_symbol}"):
+                            trade_option_contract(
+                                contract_symbol=contract_symbol,
+                                underlying_symbol=underlying,
+                                option_type=option_type,
+                                strike=strike,
+                                expiration=pos.get("expiration"),
+                                side=closing_side,
+                                quantity=quantity,
+                                price=bs_price,
+                            )
+                            st.success(
+                                f"Closed {quantity}x {contract_symbol} @ ${bs_price:.4f}. "
+                                f"Realized P&L approx.: ${total_pnl_opt:.2f}"
+                            )
+                            time.sleep(1)
+                            st.rerun()
         else:
             st.info("No options positions in portfolio yet.")
     else:
@@ -1182,18 +1407,8 @@ with tab4:
                                     step=1,
                                     key="opt_qty_call",
                                 )
-                                default_price_call = (
-                                    float(f"{selected_call['price']:.2f}")
-                                    if selected_call["price"] > 0
-                                    else 1.00
-                                )
-                                price_call = st.number_input(
-                                    "Price per contract",
-                                    min_value=0.01,
-                                    value=default_price_call,
-                                    step=0.01,
-                                    key="opt_price_call",
-                                )
+                                price_call = float(selected_call.get("price", 0.0) or 0.0)
+                                st.caption(f"Trade price (from CBOE): ${price_call:.2f}")
 
                                 if st.button(
                                     "✅ Execute Call Trade",
@@ -1286,18 +1501,8 @@ with tab4:
                                     step=1,
                                     key="opt_qty_put",
                                 )
-                                default_price_put = (
-                                    float(f"{selected_put['price']:.2f}")
-                                    if selected_put["price"] > 0
-                                    else 1.00
-                                )
-                                price_put = st.number_input(
-                                    "Price per contract",
-                                    min_value=0.01,
-                                    value=default_price_put,
-                                    step=0.01,
-                                    key="opt_price_put",
-                                )
+                                price_put = float(selected_put.get("price", 0.0) or 0.0)
+                                st.caption(f"Trade price (from CBOE): ${price_put:.2f}")
 
                                 if st.button(
                                     "✅ Execute Put Trade",
