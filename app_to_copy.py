@@ -2403,27 +2403,23 @@ def build_market_price_grid(
 
 
 def render_section_explainer(title: str, body: str) -> None:
-    """Affiche un menu déroulant descriptif pour guider l'utilisateur."""
-    with st.expander(title):
-        st.markdown(body)
+    """No-op (explications cachées)."""
+    return
 
 
 def render_general_definition_explainer(title: str, body: str) -> None:
-    """Affiche la définition générale d'une classe d'options, avec un ton pédagogique."""
-    with st.expander(title):
-        st.markdown(body)
+    """No-op (explications cachées)."""
+    return
 
 
 def render_method_explainer(title: str, body: str) -> None:
-    """Affiche une explication détaillée de la méthode de calcul utilisée dans un sous-onglet."""
-    with st.expander(title):
-        st.markdown(body)
+    """No-op (explications cachées)."""
+    return
 
 
 def render_inputs_explainer(title: str, body: str) -> None:
-    """Décrit les paramètres d'entrée effectivement utilisés par une méthode de calcul."""
-    with st.expander(title):
-        st.markdown(body)
+    """No-op (explications cachées)."""
+    return
 
 
 def render_unlock_sidebar_button(context_key: str, label: str) -> None:
