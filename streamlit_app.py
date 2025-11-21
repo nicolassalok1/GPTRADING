@@ -579,11 +579,10 @@ with st.sidebar:
         st.rerun()
 
 # Main tabs
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "📊 Dashboard",
     "💰 Buy/Sell",
     "➕ Add Equity",
-    "📋 Trading Systems",
     "🧾 Options",
 ])
 
@@ -618,26 +617,18 @@ with tab1:
         st.markdown("""
         ### 📊 Ce que vous faites dans le Dashboard
         
-        Dans cet onglet, vous vérifiez **où en est votre argent** en un coup d'œil.
-        L'idée est simple : avant de prendre une décision, vous regardez la photo globale de votre portfolio.
+        Le Dashboard est votre **vue d’ensemble** : en haut, vous discutez avec l’IA à propos de votre portfolio; en dessous,
+        vous voyez vos positions chiffrées de façon froide et objective.
         
-        Le tableau *My Portfolio* vous montre chaque ligne : symbole, quantité, prix moyen payé,
-        prix actuel, valeur de la position et P&L. C'est ici que vous voyez immédiatement
-        quelles positions tirent le portfolio vers le haut ou vers le bas.
+        La section *AI Portfolio Manager* sert à poser vos questions stratégiques : risques, diversification, idées de gestion,
+        explications de concepts. L’IA répond en tenant compte de vos positions et de vos ordres ouverts.
         
-        La métrique *Total Portfolio Value* vous donne la taille totale de votre capital investi.
-        Vous pouvez l'utiliser comme point de repère jour après jour pour suivre l'évolution globale.
+        Le bloc *My Portfolio* liste chaque actif (long ou short), avec quantité, prix moyen, prix spot, valeur et P&L.
+        Les deux métriques globales (*Total Portfolio Value* et *Total P&L*) vous donnent instantanément l’ampleur de votre exposition
+        et de vos gains/pertes cumulés.
         
-        La section *Configured Trading Systems* vous rappelle en un clin d'œil
-        quels systèmes automatiques sont en place, sur quels actifs, avec quel drawdown
-        et combien de niveaux sont définis. Vous voyez aussi rapidement leur statut (On/Off).
-        
-        La zone *Quick Remove* sert à faire du ménage : si un système ne vous convient plus,
-        vous pouvez le supprimer en un clic sans aller dans d'autres onglets.
-        
-        La bonne pratique ici est de commencer chaque session par ce Dashboard :
-        repérez les mouvements extrêmes, les positions trop lourdes ou les systèmes
-        dont vous ne comprenez plus la logique, avant d'aller agir dans les autres onglets.
+        Plus bas, la section *Options Portfolio* résume toutes vos positions d’options, puis *Configured Trading Systems* montre
+        vos robots actifs ou en attente. C’est ici que vous vérifiez si votre portefeuille réel reste cohérent avec votre plan.
         """)
     st.subheader("💰 My Portfolio")
     my_portfolio = load_portfolio()
@@ -756,29 +747,20 @@ with tab2:
         st.markdown("""
         ### 💰 Ce que vous faites dans Buy/Sell
         
-        Cet onglet est votre **outil d'exécution manuelle** : c'est ici que vous décidez
-        consciemment d'entrer ou de sortir d'une position, en contrôlant précisément prix et quantité.
+        Cet onglet est votre **poste d’exécution manuelle** : c’est ici que vous décidez
+        consciemment d’entrer, renforcer, réduire ou retourner une position, en contrôlant précisément prix et quantité.
         
-        Le bloc *Buy Asset* vous sert à ouvrir ou renforcer une position.
-        Vous indiquez le symbole, le nombre d'unités que vous voulez acheter,
-        puis vous validez ou ajustez le prix proposé en fonction du marché.
+        Le bloc *Buy / Cover Asset* permet soit d’acheter pour être ou rester **Long**, soit d’acheter pour **couvrir un short**.
+        Vous choisissez la *Direction* (Long/Short), le symbole, la quantité et le prix d’exécution.
         
-        L'application calcule pour vous le **coût total** de l'opération,
-        ce qui vous évite de faire les calculs de tête et vous aide à rester conscient
-        du capital réellement engagé sur chaque trade.
+        Le bloc *Sell / Short Asset* sert à gérer les positions existantes : vendre une partie d’un long, le clôturer entièrement,
+        ou vendre au-delà de votre quantité actuelle pour devenir **net short** sur un actif.
         
-        Le bloc *Sell Asset* est l'équivalent côté sorties : vous sélectionnez
-        une position existante, choisissez combien d'unités vendre et,
-        en fonction du prix de vente, vous voyez immédiatement le P&L associé.
+        À droite, vous voyez à chaque fois la position en place (quantité, prix moyen, sens long/short) et le P&L estimé du trade
+        avant de cliquer, ce qui vous aide à visualiser l’impact concret de l’ordre sur votre portefeuille.
         
-        Utilisez cet onglet quand vous voulez **reprendre la main** sur une position :
-        prendre vos profits, couper une perte, ou ajuster la taille d'un trade
-        indépendamment de ce que font vos systèmes automatiques.
-        
-        La bonne habitude est de toujours regarder le P&L, le pourcentage
-        et l'impact sur votre capital global avant de cliquer sur *Execute* :
-        cela vous aide à prendre des décisions moins impulsives et plus alignées
-        avec votre plan global de gestion du risque.
+        Utilisez cet onglet pour **intervenir manuellement** malgré vos systèmes automatiques : prendre des profits, couper une perte,
+        inverser une position ou initier un short tactique, tout en gardant en tête le P&L et le risque global de votre compte.
         """)
     st.subheader("💰 Buy/Sell Assets")
     
@@ -899,34 +881,31 @@ with tab3:
         st.markdown("""
         ### ➕ Ce que vous faites dans Add Equity
         
-        Ici, vous ne passez pas d'ordres immédiats : vous **concevez des systèmes automatiques**
-        qui vont acheter ou vendre à découvert pour vous selon une logique de drawdown et de niveaux de prix.
+        Ici, vous ne passez pas d’ordres immédiats : vous **concevez des systèmes automatiques** (long ou short)
+        qui interviendront pour vous à différents niveaux de prix prédéfinis.
         
-        Le champ *Symbol* sert à choisir l'actif que vous voulez suivre
+        Le champ *Symbol* sert à choisir l’actif que vous voulez suivre
         de façon structurée (indice, action, ETF, crypto, etc.).
         
-        Le champ *Direction* vous permet de choisir si vous pariez sur la hausse (Long) ou la baisse (Short) :
-        - **Long** : position acheteuse sur l'actif
-        - **Short** : position vendeuse à découvert sur l'actif
+        Le champ *Direction* vous permet de choisir si le système doit exploiter une **hausse** (Long) ou une **baisse** (Short) :
+        - **Long** : le robot cherche à accumuler ou renforcer sur l’actif
+        - **Short** : le robot cherche à construire ou renforcer une position vendeuse
         
-        *Number of Levels* définit combien de paliers d'achat/vente vous voulez.
-        Chaque niveau correspondra à un prix où le système interviendra automatiquement.
+        *Number of Levels* définit combien de paliers d’intervention vous voulez.
+        Chaque niveau correspond à un prix où le système déclenchera automatiquement un ordre (dans le sens choisi).
         
-        *Drawdown %* contrôle l'écart et la direction des niveaux de prix :
-        - **Valeur négative** (ex: -5%) : les niveaux seront **à la baisse** (en dessous du prix d'entrée)
-          → Utile pour acheter plus bas (Long) ou couvrir des shorts en baisse
-        - **Valeur positive** (ex: +5%) : les niveaux seront **à la hausse** (au dessus du prix d'entrée)
-          → Utile pour shorter plus haut (Short) ou pyramider sur une hausse (Long)
+        *Drawdown %* contrôle l’écart et la direction des niveaux :
+        - **Valeur négative** : niveaux en dessous du prix d’entrée (buy the dip / rachat de short)
+        - **Valeur positive** : niveaux au-dessus du prix d’entrée (short plus haut / pyramider sur une tendance haussière)
         
-        Un pourcentage faible donnera des niveaux proches les uns des autres,
-        un pourcentage plus élevé espacera davantage les interventions.
+        Plus le pourcentage est faible, plus les niveaux sont serrés; plus il est élevé, plus les niveaux sont espacés.
         
-        Quand vous cliquez sur *Add Equity*, l'outil calcule les niveaux
-        à partir du prix actuel et enregistre un système en mode *Off* par défaut,
-        que vous pourrez ensuite activer et superviser dans l'onglet *Trading Systems*.
+        Quand vous cliquez sur *Add Equity*, l’outil calcule tous les niveaux autour du prix actuel, enregistre le système en mode *Off*,
+        puis vous laisse l’activer et le surveiller dans la section *Manage Your Trading Systems* plus bas sur cette page.
+        C’est ici que vous transformez une idée en robot.
         
-        Utilisez cet onglet pour **planifier à l'avance** comment vous voulez intervenir
-        pendant les mouvements de marché, plutôt que d'improviser dans la panique.
+        Utilisez cet onglet pour **planifier à l’avance** comment vous voulez que vos positions se construisent ou se réduisent,
+        sans avoir à rester devant les écrans à chaque mouvement de marché.
         """)
 
     st.subheader("➕ Add New Equity")
@@ -999,43 +978,21 @@ with tab3:
                         st.error(f"Could not fetch price for {symbol}")
             else:
                 st.error("Please enter a symbol")
-
-# Tab 4: Trading Systems
-with tab4:
-    with st.expander("📘 Comprendre Trading Systems"):
-        st.markdown("""
-        ### 📋 Ce que vous faites dans Trading Systems
-        
-        Dans cet onglet, vous **pilotez vos systèmes automatiques en production** :
-        c'est la salle de contrôle où vous vérifiez ce que vos robots sont en train de faire.
-        
-        Chaque bloc correspond à un actif pour lequel vous avez créé un système
-        dans l'onglet *Add Equity*. Vous y voyez la position actuelle, le prix d'entrée,
-        le drawdown configuré et le statut On/Off.
-        
-        Le toggle *Active* vous permet d'allumer ou d'éteindre un système en un clic.
-        Quand il est sur *On*, le système surveille le marché en arrière-plan
-        et place des ordres aux niveaux de prix que vous avez définis.
-        
-        Le tableau *Price Levels* récapitule tous les paliers d'achat prévus :
-        c'est une façon visuelle de vérifier que la configuration correspond bien
-        à votre intention initiale (espacement, nombre de niveaux, profondeur totale).
-        
-        Le bouton *Remove* supprime complètement un système quand vous ne voulez plus
-        qu'il consomme de capital ou qu'il fasse partie de votre stratégie.
-        
-        Utilisez cet onglet pour faire des **revues régulières** de vos systèmes :
-        vérifier qu'ils sont toujours pertinents, qu'ils ne se chevauchent pas trop,
-        et qu'ils restent cohérents avec l'évolution de votre portefeuille global.
-        """)
-    st.subheader("📋 Trading Systems")
     
-    equities = load_equities()
+    # Trading Systems Management (moved from separate tab)
+    st.markdown("---")
+    st.markdown("### 📋 Manage Your Trading Systems")
+    st.markdown("""
+    Pilotez vos systèmes automatiques déjà configurés : c'est votre salle de contrôle pour voir comment vos robots long/short sont positionnés.
+    Le toggle *Active* active/désactive un système. Le tableau *Price Levels* montre tous les niveaux d'intervention.
+    """)
     
-    if equities:
-        for symbol, data in equities.items():
+    equities_list = load_equities()
+    
+    if equities_list:
+        for symbol, data in equities_list.items():
             direction = data.get('direction', 'long')
-            with st.expander(f"{symbol} ({direction.upper()}) - Status: {data['status']}", expanded=True):
+            with st.expander(f"{symbol} ({direction.upper()}) - Status: {data['status']}", expanded=False):
                 col1, col2, col3, col4, col5 = st.columns(5)
                 
                 with col1:
@@ -1055,12 +1012,12 @@ with tab4:
                     new_status = st.toggle(
                         "Active", 
                         value=current_status == "On",
-                        key=f"toggle_{symbol}"
+                        key=f"toggle_manage_{symbol}"
                     )
                     
                     if (new_status and current_status == "Off") or (not new_status and current_status == "On"):
-                        equities[symbol]['status'] = "On" if new_status else "Off"
-                        save_equities(equities)
+                        equities_list[symbol]['status'] = "On" if new_status else "Off"
+                        save_equities(equities_list)
                         st.rerun()
                 
                 # Display levels
@@ -1072,38 +1029,36 @@ with tab4:
                 st.dataframe(levels_df, width="stretch", hide_index=True)
                 
                 # Remove button
-                if st.button(f"🗑️ Remove {symbol}", key=f"remove_{symbol}"):
-                    del equities[symbol]
-                    save_equities(equities)
+                if st.button(f"🗑️ Remove {symbol}", key=f"remove_manage_{symbol}"):
+                    del equities_list[symbol]
+                    save_equities(equities_list)
                     st.success(f"Removed {symbol}")
                     time.sleep(1)
                     st.rerun()
     else:
-        st.info("No trading systems configured. Add an equity in the 'Add Equity' tab.")
+        st.info("No trading systems configured yet. Add an equity above to get started.")
 
-# Tab 5: Options
-with tab5:
+# Tab 4: Options
+with tab4:
     with st.expander("📘 Comprendre Options"):
         st.markdown("""
         ### 🧾 Ce que vous faites dans Options
         
-        Cet onglet vous permet d'explorer les **options européennes** liées à un sous-jacent,
-        puis de prendre des positions longues (achat) ou courtes (vente à découvert) sur un contrat précis.
+        Cet onglet vous permet d’explorer les **options européennes CBOE** sur un sous-jacent donné,
+        puis de prendre des positions longues (achat d’options) ou courtes (vente d’options) sur un contrat précis.
         
-        L'idée est de vous donner un outil complémentaire aux actions :
-        vous pouvez exprimer une vue directionnelle avec effet de levier,
-        couvrir une position existante, ou structurer des paris plus finement
-        qu'avec le sous-jacent seul.
+        L’idée est d’ajouter un outil complémentaire aux actions : vous pouvez exprimer une vue directionnelle avec effet de levier,
+        couvrir une position cash, ou structurer des paris plus fins (proches/loin du money, courts ou longs termes).
         
         Le flux de travail est le suivant :
-        1. Vous choisissez un **ticker sous-jacent** (par exemple AAPL)
-        2. L'application récupère une liste de contrats d'options européennes disponibles
-        3. Vous sélectionnez un contrat (type, strike, échéance)
-        4. Vous choisissez si vous voulez être **Long** (acheteur de l'option) ou **Short** (vendeur)
-        5. Vous entrez la quantité et le prix, puis vous validez l'ordre
+        1. Vous saisissez un **ticker sous-jacent** (ex: AAPL) et chargez la chaîne d’options depuis CBOE
+        2. Vous choisissez une **maturité T** (en années) parmi celles réellement cotées
+        3. Vous basculez entre les onglets **Call** et **Put**
+        4. Pour chaque type, vous choisissez un **strike K** via un curseur; les pastilles en dessous résument Spot, T, K, Prix, IV
+        5. Vous choisissez si vous voulez être **Long** ou **Short**, la quantité et le prix, puis vous enregistrez la position
         
-        Toutes vos positions options sont ensuite visibles dans la section *Options Portfolio*
-        du Dashboard, avec le sens (Long/Short) clairement indiqué.
+        Toutes vos positions d’options sont ensuite visibles dans la section *Options Portfolio* du Dashboard,
+        avec le sens (Long/Short) clairement indiqué. Cela vous permet de relier en permanence dérivés et portefeuille cash.
         """)
 
     st.subheader("🧾 Trade Options (European)")
