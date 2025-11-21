@@ -3087,36 +3087,46 @@ else:
     else:
         st.info("Pas d'historique disponible pour ce ticker.")
 
-(
-    tab_european,
-    tab_american,
-    tab_lookback,
-    tab_barrier,
-    tab_bermudan,
-    tab_basket,
-    tab_asian,
-) = st.tabs(["Européenne", "Américaine", "Lookback", "Barrière", "Bermuda", "Basket", "Asian"])
-
-
-with tab_european:
-    st.header("Option européenne")
-    render_general_definition_explainer(
-        "📘 Comprendre les options européennes",
-        (
-            "- **Nature du produit** : une option européenne donne le droit, mais pas l'obligation, d'acheter (call) ou de vendre (put) un sous-jacent à une date d'échéance `T` et à un prix fixé à l'avance `K`. L'exercice ne peut avoir lieu **qu'à la maturité**, jamais avant.\n"
-            "- **Payoff à l'échéance** :\n"
-            "  - Call : `max(S_T - K, 0)` – on exerce seulement si le sous-jacent vaut plus que le strike.\n"
-            "  - Put  : `max(K - S_T, 0)` – on exerce seulement si le sous-jacent vaut moins que le strike.\n"
-            "- **Mesure neutre au risque** : dans les modèles utilisés ici, on raisonne sous une mesure où le sous-jacent rapporte le taux sans risque ajusté du dividende. Le prix de l'option est alors l'espérance actualisée de ce payoff.\n"
-            "- **Variables structurantes** : le prix dépend principalement de `S0` (spot), `K` (strike), `T` (maturité), `r` (taux sans risque), `d` (dividende continu) et `σ` (volatilité implicite ou historique selon le modèle).\n"
-            "- **Interprétation des heatmaps** : les cartes de chaleur affichées dans cet onglet montrent comment le prix du call et du put varie lorsque l'on fait bouger `S` et `K` autour des valeurs communes définies dans la barre latérale, pour un `T` et des paramètres donnés.\n"
-            "- **Rôle de cet onglet** : il sert de point de départ pour comparer différentes façons de pricer le même produit : modèle de diffusion simple (BSM), simulation Monte Carlo, ou modèle de volatilité stochastique (Heston)."
-        ),
-    )
-
-    tab_eu_heston, tab_eu_bsm, tab_eu_mc = st.tabs(["Heston", "Black–Scholes–Merton", "Monte Carlo"])
-
-    with tab_eu_heston:
+def render_option_tabs_for_type(option_label: str, option_char: str):
+    # Helper to avoid duplicate Streamlit keys across Call/Put tabs.
+    def _k(base: str) -> str:
+        return f"{base}_{option_label.lower()}"
+    # Helper to render the relevant heatmap for the current Call/Put tab.
+    def _render_heatmaps_for_current_option(label: str, call_matrix, put_matrix, x_vals, y_vals):
+        if option_char == "c":
+            st.write(f"Heatmap Call ({label})")
+            _render_heatmap(call_matrix, x_vals, y_vals, f"Call ({label})")
+        else:
+            st.write(f"Heatmap Put ({label})")
+            _render_heatmap(put_matrix, x_vals, y_vals, f"Put ({label})")
+    (
+        tab_european,
+        tab_american,
+        tab_lookback,
+        tab_barrier,
+        tab_bermudan,
+        tab_basket,
+        tab_asian,
+    ) = st.tabs(["Européenne", "Américaine", "Lookback", "Barrière", "Bermuda", "Basket", "Asian"])
+    
+    
+    with tab_european:
+        st.header("Option européenne")
+        render_general_definition_explainer(
+            "📘 Comprendre les options européennes",
+            (
+                "- **Nature du produit** : une option européenne donne le droit, mais pas l'obligation, d'acheter (call) ou de vendre (put) un sous-jacent à une date d'échéance `T` et à un prix fixé à l'avance `K`. L'exercice ne peut avoir lieu **qu'à la maturité**, jamais avant.\n"
+                "- **Payoff à l'échéance** :\n"
+                "  - Call : `max(S_T - K, 0)` – on exerce seulement si le sous-jacent vaut plus que le strike.\n"
+                "  - Put  : `max(K - S_T, 0)` – on exerce seulement si le sous-jacent vaut moins que le strike.\n"
+                "- **Mesure neutre au risque** : dans les modèles utilisés ici, on raisonne sous une mesure où le sous-jacent rapporte le taux sans risque ajusté du dividende. Le prix de l'option est alors l'espérance actualisée de ce payoff.\n"
+                "- **Variables structurantes** : le prix dépend principalement de `S0` (spot), `K` (strike), `T` (maturité), `r` (taux sans risque), `d` (dividende continu) et `σ` (volatilité implicite ou historique selon le modèle).\n"
+                "- **Interprétation des heatmaps** : les cartes de chaleur affichées dans cet onglet montrent comment le prix du call et du put varie lorsque l'on fait bouger `S` et `K` autour des valeurs communes définies dans la barre latérale, pour un `T` et des paramètres donnés.\n"
+                "- **Rôle de cet onglet** : il sert de point de départ pour comparer différentes façons de pricer le même produit : modèle de diffusion simple (BSM), simulation Monte Carlo, ou modèle de volatilité stochastique (Heston)."
+            ),
+        )
+    
+        st.subheader("Heston (référence)")
         render_method_explainer(
             "🧮 Méthode Heston pour les options européennes",
             (
@@ -3126,71 +3136,48 @@ with tab_european:
                 "- **Étape 4 – Construction d’un pricer rapide** : pour un jeu de paramètres Heston donné, on évalue les prix de calls européens via la méthode de Carr–Madan (transformée de Fourier) implémentée en `carr_madan_call_torch`, ce qui permet d’avoir un pricer différentiable dans PyTorch.\n"
                 "- **Étape 5 – Définition de la fonction de perte** : on compare les prix modèle aux prix de marché sur l’ensemble des points, via une fonction de perte de type somme pondérée des carrés des écarts, éventuellement avec des poids pour privilégier certaines zones du smile.\n"
                 "- **Étape 6 – Optimisation / calibration** : à partir d’un vecteur de paramètres non contraints `u`, on reconstruit des paramètres Heston admissibles (positivité, contraintes de Feller) puis on minimise la perte par descente de gradient ou quasi‑Newton (itérations jusqu’à `max_iters` avec un pas `learning_rate`).\n"
-                "- **Étape 7 – Exploitation des paramètres calibrés** : une fois les paramètres calibrés obtenus, on peut :\n"
-                "  • pricer des options européennes sur une grille `(K, T)` pour construire des surfaces de prix ;\n"
-                "  • en déduire des surfaces de volatilité implicite ;\n"
-                "  • comparer ces surfaces à celles issues de BSM ou de Monte Carlo simple.\n"
-                "- **Étape 8 – Visualisation et diagnostics** : les erreurs de calibration et les surfaces résultantes sont examinées pour vérifier la cohérence du modèle avec les données (forme du smile, term‑structure de volatilité, etc.)."
+                "- **Étape 7 – Exploitation des paramètres calibrés** : une fois les paramètres calibrés obtenus, on peut pricer des options européennes, dériver des surfaces d’IV et comparer au BSM / MC.\n"
             ),
         )
         render_inputs_explainer(
             "🔧 Paramètres utilisés – Heston européen",
             (
-                "- **\"S0 (spot)\"** : niveau actuel du sous‑jacent, utilisé comme référence pour centrer la grille de strikes et interpréter les surfaces de prix.\n"
-                "- **\"K (strike)\"** : strike de référence saisi dans la barre latérale, utilisé pour certains graphiques ciblés et pour positionner la grille en moneyness.\n"
-                "- **\"T (maturité, années)\"** : maturité commune à laquelle on lit les prix et la surface de volatilité implicite.\n"
-                "- **\"Taux sans risque r\"** : taux d’actualisation continu utilisé dans le modèle de Heston pour passer de payoffs futurs aux prix présents.\n"
-                "- **\"Dividende continu d\"** : rendement de portage continu, qui vient diminuer le drift du sous‑jacent sous la mesure neutre au risque.\n"
-                "- **\"Ticker (sous-jacent)\"** : code CBOE de l’actif (ex. `SPY`) dont on télécharge la chaîne d’options.\n"
-                "- **Bouton \"Récupérer les données du ticker\"** : lance la collecte des options marché (calls / puts), qui serviront de base à la calibration.\n"
-                "- **\"Largeur bande T (±)\"** : largeur de la bande de maturités autour de `T` sur laquelle la calibration Heston est concentrée.\n"
-                "- **\"Maturité T cible pour la calibration\"** : maturité centrale de la bande de calibration, choisie parmi les maturités observées.\n"
-                "- **\"Choisir un mode\" (Rapide / Bonne / Excellente)** : règle automatiquement le nombre d’itérations et le pas d’apprentissage de la calibration (compromis précision / temps).\n"
-                "- **Paramètres Heston calibrés** : paramètres implicites du modèle `(κ, θ, σ_v, ρ, v0)` que la procédure d’optimisation ajuste pour coller au mieux aux prix observés."
+                "- **\"S0 (spot)\"** : niveau actuel du sous‑jacent, utilisé pour centrer la grille de strikes.\n"
+                "- **\"K (strike)\"** : strike de référence saisi dans la barre latérale.\n"
+                "- **\"T (maturité, années)\"** : maturité commune pour les surfaces.\n"
+                "- **\"Taux sans risque r\"** et **\"Dividende continu d\"** : paramètres de taux.\n"
+                "- **\"Ticker (sous-jacent)\"** : code CBOE utilisé pour la collecte des options.\n"
+                "- **\"Largeur bande T (±)\"** et \"Maturité T cible\" : bornes de calibration.\n"
             ),
         )
 
-    with tab_eu_bsm:
+        st.divider()
+        st.subheader("Black–Scholes–Merton (prix ponctuel + heatmaps)")
         render_unlock_sidebar_button("eu_bsm", "🔓 Réactiver T (onglet BSM)")
         render_method_explainer(
             "🧮 Méthode Black–Scholes–Merton (BSM)",
             (
-                "- **Étape 1 – Mise sous la mesure neutre au risque** : on suppose que le sous‑jacent suit un mouvement brownien géométrique avec volatilité constante `σ` et drift neutre au risque `r-d`. Cette hypothèse conduit à une distribution log‑normale de `S_T`.\n"
-                "- **Étape 2 – Calcul des quantités intermédiaires** : pour chaque couple `(S, K)` de la grille, on calcule\n"
-                "  `d1 = [ln(S/K) + (r-d + 0.5 σ²) T] / (σ√T)` et `d2 = d1 - σ√T`. Ces deux variables normalisées condensent l’information de tous les paramètres du modèle.\n"
-                "- **Étape 3 – Utilisation de la loi normale** : on évalue les fonctions de répartition `N(d1)` et `N(d2)` pour obtenir les probabilités risque‑neutres implicites de finir dans la monnaie.\n"
-                "- **Étape 4 – Formule de prix** :\n"
-                "  • Call : `C = S e^{-dT} N(d1) - K e^{-rT} N(d2)` ;\n"
-                "  • Put  : `P = K e^{-rT} N(-d2) - S e^{-dT} N(-d1)`.\n"
-                "  On applique ces formules pour chaque point de la grille `(S, K)` afin de remplir les matrices de prix call et put.\n"
-                "- **Étape 5 – Construction des heatmaps** : les matrices de prix sont organisées selon les axes `Spot` (valeurs de `S`) et `Strike` (valeurs de `K`) pour produire les cartes de chaleur. On visualise ainsi la structure du prix dans le plan `(S, K)` pour une maturité et des paramètres donnés.\n"
-                "- **Étape 6 – Analyse et comparaison** : ces surfaces BSM servent de référence. On peut comparer point par point les niveaux de prix et la forme générale aux surfaces issues du modèle de Heston ou de Monte Carlo afin de mettre en évidence les limites du cadre à volatilité constante."
+                "- **Étape 1 – Mise sous la mesure neutre au risque** : on suppose GBM avec volatilité constante `σ` et drift `r-d`.\n"
+                "- **Étape 2 – Calcul des quantités intermédiaires** : `d1`, `d2` pour chaque `(S, K)`.\n"
+                "- **Étape 3 – Formule de prix** : call/put fermés.\n"
+                "- **Étape 4 – Construction des heatmaps** : matrices de prix call/put sur la grille Spot × Strike.\n"
             ),
         )
         render_inputs_explainer(
             "🔧 Paramètres utilisés – BSM",
             (
-                "- **\"S0 (spot)\"** : centre de l’axe des spots utilisé pour construire la grille horizontale des heatmaps BSM.\n"
-                "- **\"K (strike)\"** : centre de l’axe des strikes autour duquel on génère les valeurs de `K` de la heatmap.\n"
-                "- **\"T (maturité, années)\"** : maturité commune appliquée à tous les couples `(S, K)` de la grille.\n"
-                "- **\"Taux sans risque r\"** : taux continu utilisé pour actualiser le strike et déterminer le drift neutre au risque.\n"
-                "- **\"Dividende continu d\"** : rendement continu soustrait du drift, qui représente le coût de portage du sous‑jacent.\n"
-                "- **\"Volatilité σ\"** : volatilité constante utilisée pour tous les points de la grille dans la formule BSM.\n"
-                "- **\"Span autour du spot (heatmaps)\"** : amplitude autour de `S0 (spot)` et `K (strike)` qui définit l’étendue de la grille de calcul.\n"
-                "- **Résultat** : à partir de ces entrées, l’application construit les matrices de prix call/put utilisées pour les cartes de chaleur."
+                "- **\"S0 (spot)\"** et **\"K (strike)\"** : centres de la grille.\n"
+                "- **\"T (maturité, années)\"**, **\"r\"**, **\"d\"**, **\"σ\"** : paramètres du modèle.\n"
+                "- **\"Span autour du spot (heatmaps)\"** : amplitude de la grille.\n"
             ),
         )
-        cpflag_eu_bsm = st.selectbox(
-            "Call / Put (BSM)",
-            ["Call", "Put"],
-            key="cpflag_eu_bsm_single",
-            help="Type d’option européenne à pricer avec la formule BSM.",
-        )
+        cpflag_eu_bsm = option_label
+        st.caption("Type fixé par l’onglet Call / Put en haut de page.")
         if st.button(
             f"Calculer le prix BSM ({cpflag_eu_bsm})",
-            key="btn_price_eu_bsm",
+            key=_k("btn_price_eu_bsm"),
         ):
-            opt_type = "call" if cpflag_eu_bsm == "Call" else "put"
+            opt_type = "call" if option_char == "c" else "put"
             price_bsm = _vanilla_price_with_dividend(
                 option_type=opt_type,
                 S0=common_spot_value,
@@ -3207,7 +3194,7 @@ with tab_european:
             f"T={common_maturity_value:.4f}, r={common_rate_value:.4f}, "
             f"d={float(d_common):.4f}, σ={common_sigma_value:.4f}"
         )
-        st.subheader("Formule fermée BSM")
+        st.markdown("**Heatmaps BSM**")
         call_heatmap_bsm, put_heatmap_bsm = _compute_bsm_heatmaps(
             heatmap_spot_values,
             heatmap_strike_values,
@@ -3215,64 +3202,54 @@ with tab_european:
             r_common - d_common,
             sigma_common,
         )
-        _render_call_put_heatmaps("BSM", call_heatmap_bsm, put_heatmap_bsm, heatmap_spot_values, heatmap_strike_values)
+        _render_heatmaps_for_current_option("BSM", call_heatmap_bsm, put_heatmap_bsm, heatmap_spot_values, heatmap_strike_values)
 
-    with tab_eu_mc:
+        st.divider()
+        st.subheader("Monte Carlo (prix ponctuel + option heatmaps)")
         render_unlock_sidebar_button("eu_mc", "🔓 Réactiver T (onglet Monte Carlo)")
         render_method_explainer(
             "🎲 Méthode Monte Carlo pour options européennes",
             (
-                "- **Étape 1 – Fixation du cadre de simulation** : on choisit un nombre de trajectoires `n_paths_eu` et un nombre de pas de temps `n_steps_eu`. La maturité `T_common` est découpée en intervalles `Δt = T_common / n_steps_eu`.\n"
-                "- **Étape 2 – Discrétisation de la dynamique** : pour chaque trajectoire, on fait évoluer le sous‑jacent selon le schéma d’Euler pour le GBM neutre au risque :\n"
-                "  `S_{t+Δt} = S_t · exp((r-d-0.5 σ²)Δt + σ√Δt · Z)` avec `Z ~ N(0,1)` indépendant.\n"
-                "- **Étape 3 – Simulation sur la grille `(S, K)`** : pour chaque valeur de spot de la grille `heatmap_spot_values`, on simule `n_paths_eu` trajectoires jusqu’à `T_common`. On obtient ainsi un vecteur de prix terminaux `S_T` pour ce spot.\n"
-                "- **Étape 4 – Calcul des payoffs** : pour chaque strike de `heatmap_strike_values`, on calcule, à partir des `S_T` simulés :\n"
-                "  • pour un call : `max(S_T - K, 0)` ;\n"
-                "  • pour un put  : `max(K - S_T, 0)`.\n"
-                "  On actualise ensuite ces payoffs par le facteur `discount = exp(-r_common·T_common)`.\n"
-                "- **Étape 5 – Moyenne Monte Carlo** : pour chaque couple `(S, K)`, on moyenne les payoffs actualisés sur toutes les trajectoires. Cette moyenne est l’estimateur Monte Carlo du prix.\n"
-                "- **Étape 6 – Remplissage des matrices** : on stocke les prix estimes dans deux matrices (call et put) indexées par les indices de `S` et `K`, qui serviront à l’affichage des cartes de chaleur.\n"
-                "- **Étape 7 – Contrôle de la précision** : en pratique, on compare les surfaces obtenues à celles de BSM pour vérifier la convergence lorsque `n_paths_eu` et `n_steps_eu` augmentent, et on ajuste ces paramètres en fonction du compromis précision / temps de calcul."
+                "- **Simulation GBM** : `n_paths_eu` trajectoires, `n_steps_eu` pas.\n"
+                "- **Payoff call/put** : calcul sur `S_T`, actualisation `exp(-rT)`.\n"
+                "- **Heatmaps optionnelles** : calculées uniquement si demandé.\n"
             ),
         )
         render_inputs_explainer(
             "🔧 Paramètres utilisés – Monte Carlo européen",
             (
-                "- **\"S0 (spot)\"** et **\"K (strike)\"** : déterminent le centre de la grille `(S, K)` sur laquelle on lance les simulations Monte Carlo.\n"
-                "- **\"T (maturité, années)\"** : définit la durée de chaque trajectoire simulée.\n"
-                "- **\"Taux sans risque r\"** : utilisé à la fois dans le drift neutre au risque et dans le facteur d’actualisation des payoffs.\n"
-                "- **\"Dividende continu d\"** : réduit le drift du sous‑jacent sous la mesure neutre au risque.\n"
-                "- **\"Volatilité σ\"** : volatilité constante utilisée dans la dynamique simulée.\n"
-                "- **\"Span autour du spot (heatmaps)\"** : règle l’étendue des valeurs de `S` et `K` explorées dans les heatmaps.\n"
-                "- **\"Trajectoires Monte Carlo\"** : nombre de trajectoires simulées pour chaque point de la grille (contrôle la précision statistique).\n"
-                "- **\"Pas de temps\"** : nombre de pas de simulation par trajectoire (contrôle la finesse de la discrétisation temporelle)."
+                "- **S0, K, T, r, d, σ** : paramètres de base (barre latérale).\n"
+                "- **Trajectoires / pas de temps** : contrôle précision vs temps.\n"
+                "- **Heatmaps Monte Carlo** : décochables pour accélérer le calcul ponctuel.",
             ),
         )
-        st.subheader("Monte Carlo classique")
         n_paths_eu = st.number_input(
             "Trajectoires Monte Carlo",
             value=10_000,
             min_value=100,
-            key="n_paths_eu",
+            key=_k("n_paths_eu"),
             help="Nombre de trajectoires simulées pour chaque point de la grille.",
         )
         n_steps_eu = st.number_input(
             "Pas de temps",
             value=50,
             min_value=1,
-            key="n_steps_eu",
+            key=_k("n_steps_eu"),
             help="Nombre de pas de temps utilisés pour discrétiser la maturité.",
         )
-        cpflag_eu_mc = st.selectbox(
-            "Call / Put (Monte Carlo)",
-            ["Call", "Put"],
-            key="cpflag_eu_mc_single",
-            help="Type d’option européenne à pricer par Monte Carlo.",
+        compute_heatmaps_mc = st.checkbox(
+            "Calculer également les heatmaps Monte Carlo",
+            value=False,
+            key=_k("run_mc_heatmaps"),
+            help="Décoche pour ne calculer que le prix ponctuel (plus rapide).",
         )
+        cpflag_eu_mc = option_label
+        st.caption("Type fixé par l’onglet Call / Put en haut de page.")
         if st.button(
             f"Calculer le prix Monte Carlo ({cpflag_eu_mc})",
-            key="btn_price_eu_mc",
+            key=_k("btn_price_eu_mc"),
         ):
+            progress = st.progress(0)
             try:
                 paths_eu, _ = simulate_gbm_paths(
                     S0=common_spot_value,
@@ -3283,853 +3260,876 @@ with tab_european:
                     M=int(n_steps_eu),
                     N_paths=int(n_paths_eu),
                 )
+                progress.progress(40)
                 ST = paths_eu[-1]
-                if cpflag_eu_mc == "Call":
+                if option_char == "c":
                     payoff = np.maximum(ST - common_strike_value, 0.0)
                 else:
                     payoff = np.maximum(common_strike_value - ST, 0.0)
                 price_mc = float(np.exp(-common_rate_value * common_maturity_value) * payoff.mean())
                 st.success(f"Prix Monte Carlo ({cpflag_eu_mc}) = {price_mc:.6f}")
+                progress.progress(65)
+
+                if compute_heatmaps_mc:
+                    with st.spinner("Calcul des heatmaps Monte Carlo…"):
+                        call_heatmap_mc, put_heatmap_mc = _compute_mc_heatmaps(
+                            heatmap_spot_values,
+                            heatmap_strike_values,
+                            T_common,
+                            r_common - d_common,
+                            sigma_common,
+                            int(n_paths_eu),
+                            int(n_steps_eu),
+                        )
+                    _render_heatmaps_for_current_option(
+                        "Monte Carlo",
+                        call_heatmap_mc,
+                        put_heatmap_mc,
+                        heatmap_spot_values,
+                        heatmap_strike_values,
+                    )
+                progress.progress(100)
             except Exception as exc:
                 st.error(f"Erreur Monte Carlo européen : {exc}")
-        st.caption(
-            f"Paramètres utilisés pour le prix unique Monte Carlo : "
-            f"S0={common_spot_value:.4f}, K={common_strike_value:.4f}, "
-            f"T={common_maturity_value:.4f}, r={common_rate_value:.4f}, "
-            f"d={float(d_common):.4f}, σ={common_sigma_value:.4f}, "
-            f"N_paths={int(n_paths_eu)}, N_steps={int(n_steps_eu)}"
-        )
-        with st.spinner("Calcul des heatmaps Monte Carlo"):
-            call_heatmap_mc, put_heatmap_mc = _compute_mc_heatmaps(
-                heatmap_spot_values,
-                heatmap_strike_values,
-                T_common,
-                r_common - d_common,
-                sigma_common,
-                int(n_paths_eu),
-                int(n_steps_eu),
-            )
-        _render_call_put_heatmaps(
-            "Monte Carlo", call_heatmap_mc, put_heatmap_mc, heatmap_spot_values, heatmap_strike_values
-        )
-
-with tab_american:
-    st.header("Option américaine")
-    render_unlock_sidebar_button("tab_american", "🔓 Réactiver T (onglet Américain)")
-    render_general_definition_explainer(
-        "📗 Comprendre les options américaines",
-        (
-            "- **Droit d'exercice anticipé** : une option américaine peut être exercée à n'importe quel moment entre la date d'émission et la maturité. Elle offre donc plus de flexibilité qu'une option européenne.\n"
-            "- **Conséquence sur le prix** : cette flexibilité a une valeur. À paramètres identiques (`S0`, `K`, `T`, `r`, `d`, `σ`), le prix d'une option américaine est **au moins** aussi élevé que celui de l'option européenne correspondante.\n"
-            "- **Vision dynamique** : le problème de pricing devient un problème de contrôle optimal : à chaque date de la grille temporelle, l'agent choisit entre exercer immédiatement ou conserver l'option.\n"
-            "- **Lien avec les grecs** : pour les puts notamment, la possibilité d'exercer en avance influence fortement `Delta` et `Theta`, en particulier lorsque le sous-jacent est proche ou sous le strike.\n"
-            "- **Rôle de cet onglet** : il illustre deux grandes familles d'approches numériques pour ce problème : une méthode Monte Carlo (Longstaff–Schwartz) et une méthode par arbre binomial (CRR)."
-        ),
-    )
-    cpflag_am = st.selectbox("Call / Put (américaine)", ["Call", "Put"], key="cpflag_am")
-    cpflag_am_char = "c" if cpflag_am == "Call" else "p"
-    st.caption(
-        "Les heatmaps affichent les prix call / put sur un carré Spot × Strike centré autour du spot défini dans la barre latérale."
-    )
-
-    tab_am_ls, tab_am_crr = st.tabs(
-        ["Longstaff–Schwartz", "Arbre CRR"]
-    )
-
-    with tab_am_ls:
-        st.subheader("Monte Carlo Longstaff–Schwartz")
-        render_method_explainer(
-            "🧮 Méthode Longstaff–Schwartz (régression Monte Carlo)",
-            (
-                "- **Objectif** : approximer la stratégie d'exercice optimale d'une option américaine en combinant simulation Monte Carlo et régressions sur la valeur de continuation.\n"
-                "- **Étape 1 – Simulation des trajectoires** : on simule un grand nombre de trajectoires du sous‑jacent (GBM ou Heston) sous la mesure neutre au risque, en discrétisant `[0, T_common]` en `n_steps_am` pas.\n"
-                "- **Étape 2 – Calcul des payoffs finaux** : à la dernière date de la grille (≈ maturité), on calcule le payoff européen standard pour chaque trajectoire (call ou put) et on l’utilise comme valeur initiale de continuation.\n"
-                "- **Étape 3 – Remontée dans le temps (backward induction)** : pour chaque date de la grille, en partant de l’avant‑dernière jusqu’à la première, on considère les trajectoires où l’option est dans la monnaie à cette date.\n"
-                "- **Étape 4 – Régression de la valeur de continuation** : sur l’ensemble des trajectoires in‑the‑money, on ajuste une régression (souvent polynomiale en `S_t`) entre le prix courant `S_t` et la valeur actualisée des payoffs futurs. Cette régression donne une approximation de la valeur de continuation conditionnelle.\n"
-                "- **Étape 5 – Décision d’exercice** : pour chaque trajectoire et à chaque date, on compare le payoff d’exercice immédiat à la valeur de continuation régressée. Si le payoff immédiat est plus élevé, on exerce (on fige le payoff sur cette trajectoire et on ignore les valeurs futures) ; sinon, on conserve la valeur de continuation.\n"
-                "- **Étape 6 – Agrégation des payoffs** : après avoir remonté toutes les dates, chaque trajectoire porte un payoff actualisé correspondant à la stratégie d’exercice optimale approximée. Le prix de l’option est la moyenne de ces payoffs sur l’ensemble des trajectoires.\n"
-                "- **Étape 7 – Utilisation pour les heatmaps** : le schéma précédent est réutilisé sur une grille de `S0` et `K` pour construire des surfaces de prix américains, qui peuvent être comparées aux surfaces européennes ou CRR.\n"
-                "- **Intérêt** : la méthode est très flexible (capable de traiter des payoffs complexes) tout en évitant la construction explicite d’un arbre multidimensionnel."
-            ),
-        )
-        render_inputs_explainer(
-            "🔧 Paramètres utilisés – Longstaff–Schwartz",
-            (
-                "- **Paramètres communs de la barre latérale** :\n"
-                "  - **\"S0 (spot)\"** : niveau de référence du sous‑jacent pour les heatmaps et les simulations.\n"
-                "  - **\"K (strike)\"** : strike de l’option américaine utilisée pour le payoff.\n"
-                "  - **\"T (maturité, années)\"** : horizon de temps de l’option américaine, donc durée des trajectoires simulées.\n"
-                "  - **\"Taux sans risque r\"** et **\"Dividende continu d\"** : entrent dans le drift neutre au risque et dans l’actualisation des payoffs.\n"
-                "  - **\"Volatilité σ\"** : volatilité du sous‑jacent lorsque le processus choisi est un GBM.\n"
-                "- **\"Processus sous-jacent\"** : menu déroulant qui permet de choisir entre un **Geometric Brownian Motion** et un **processus de Heston** pour simuler `S_t`.\n"
-                "- **Si \"Geometric Brownian Motion\" est sélectionné** : seules les entrées ci‑dessus (dont \"Volatilité σ\") pilotent la dynamique.\n"
-                "- **Si \"Heston\" est sélectionné** : les champs suivants apparaissent et décrivent la variance stochastique :\n"
-                "  - **\"κ (vitesse de rappel)\"**, **\"θ (variance long terme)\"**, **\"η (vol de la variance)\"**, **\"ρ (corrélation)\"**, **\"v0 (variance initiale)\"**.\n"
-                "- **\"Trajectoires Monte Carlo\"** : nombre de trajectoires utilisées pour estimer le prix américain.\n"
-                "- **\"Pas de temps\"** : nombre de dates intermédiaires sur lesquelles l’algorithme Longstaff–Schwartz peut potentiellement décider d’exercer l’option."
-            ),
-        )
-        process_type_am = st.selectbox(
-            "Processus sous-jacent",
-            ["Geometric Brownian Motion", "Heston"],
-            key="process_type_am",
-            help="Choix du modèle utilisé pour simuler le sous-jacent (GBM ou Heston).",
-        )
-        n_paths_am = st.number_input(
-            "Trajectoires Monte Carlo",
-            value=1000,
-            min_value=100,
-            key="n_paths_am",
-            help="Nombre de trajectoires Monte Carlo utilisées pour le prix américain.",
-        )
-        n_steps_am = st.number_input(
-            "Pas de temps",
-            value=50,
-            min_value=1,
-            key="n_steps_am",
-            help="Nombre de dates intermédiaires possibles d’exercice dans Longstaff–Schwartz.",
-        )
-
-        if process_type_am == "Geometric Brownian Motion":
-            process_am = GeometricBrownianMotion(mu=r_common - d_common, sigma=sigma_common)
-            v0_am = None
-        else:
-            kappa_am = float(st.session_state.get("heston_kappa_common", 2.0))
-            theta_am = float(st.session_state.get("heston_theta_common", 0.04))
-            eta_am = float(st.session_state.get("heston_eta_common", 0.5))
-            rho_am = float(st.session_state.get("heston_rho_common", -0.7))
-            v0_am = float(st.session_state.get("heston_v0_common", 0.04))
+            finally:
+                progress.empty()
             st.caption(
-                f"Paramètres de Heston (sidebar) : κ={kappa_am:.4f}, θ={theta_am:.4f}, η={eta_am:.4f}, "
-                f"ρ={rho_am:.4f}, v0={v0_am:.4f}"
+                f"Paramètres utilisés pour le prix unique Monte Carlo : "
+                f"S0={common_spot_value:.4f}, K={common_strike_value:.4f}, "
+                f"T={common_maturity_value:.4f}, r={common_rate_value:.4f}, "
+                f"d={float(d_common):.4f}, σ={common_sigma_value:.4f}, "
+                f"N_paths={int(n_paths_eu)}, N_steps={int(n_steps_eu)}"
             )
-            process_am = HestonProcess(
-                mu=r_common - d_common, kappa=kappa_am, theta=theta_am, eta=eta_am, rho=rho_am
-            )
-
-        if st.button(
-            f"Calculer le prix américain L-S ({cpflag_am})",
-            key="btn_price_am_ls",
-        ):
-            try:
-                option_ls = Option(
-                    s0=S0_common,
-                    T=T_common,
-                    K=K_common,
-                    v0=v0_am,
-                    call=(cpflag_am == "Call"),
-                )
-                price_ls = longstaff_schwartz_price(
-                    option=option_ls,
-                    process=process_am,
-                    n_paths=int(n_paths_am),
-                    n_steps=int(n_steps_am),
-                )
-                st.success(f"Prix américain Longstaff–Schwartz ({cpflag_am}) = {price_ls:.6f}")
-            except Exception as exc:
-                st.error(f"Erreur Longstaff–Schwartz : {exc}")
-        st.caption(
-            f"Paramètres utilisés pour le prix unique L-S : "
-            f"S0={S0_common:.4f}, K={K_common:.4f}, T={T_common:.4f}, "
-            f"r={r_common:.4f}, d={d_common:.4f}, σ={sigma_common:.4f}, "
-            f"N_paths={int(n_paths_am)}, N_steps={int(n_steps_am)}"
-        )
-
-        with st.spinner("Calcul des heatmaps Longstaff–Schwartz"):
-            call_heatmap_ls, put_heatmap_ls = _compute_american_ls_heatmaps(
-                heatmap_spot_values,
-                heatmap_strike_values,
-                T_common,
-                process_am,
-                int(n_paths_am),
-                int(n_steps_am),
-                v0_am,
-            )
-        _render_call_put_heatmaps(
-            "Longstaff–Schwartz", call_heatmap_ls, put_heatmap_ls, heatmap_spot_values, heatmap_strike_values
-        )
-
-    with tab_am_crr:
-        st.subheader("Arbre binomial CRR")
-        render_method_explainer(
-            "🌳 Méthode binomiale CRR pour options américaines",
+    
+    with tab_american:
+        st.header("Option américaine")
+        render_unlock_sidebar_button("tab_american", "🔓 Réactiver T (onglet Américain)")
+        render_general_definition_explainer(
+            "📗 Comprendre les options américaines",
             (
-                "- **Étape 1 – Discrétisation de l’horizon** : la maturité `T_common` est découpée en `n_tree_am` pas de temps de durée `Δt = T_common / n_tree_am`.\n"
-                "- **Étape 2 – Paramétrage de l’arbre** : à partir de `σ` et `Δt`, on construit les facteurs de hausse et de baisse, typiquement `u = e^{σ√Δt}` et `d = 1/u`. On en déduit une probabilité neutre au risque `p` telle que `E_Q[S_{t+Δt}] = S_t e^{(r-d)Δt}`.\n"
-                "- **Étape 3 – Construction de l’arbre des spots** : en partant de `S0_common`, on génère les valeurs de `S` à chaque nœud du maillage binomial (chaque niveau correspond à un temps, chaque nœud à un nombre de hausses/baisse cumulées).\n"
-                "- **Étape 4 – Initialisation des payoffs à maturité** : à la dernière ligne de l’arbre (temps `T_common`), on calcule le payoff européen `max(±(S_T-K_common), 0)` pour chaque nœud et on le stocke dans `value_tree`.\n"
-                "- **Étape 5 – Rétro‑propagation (valeur de continuation)** : en remontant niveau par niveau, on calcule à chaque nœud la valeur de continuation comme espérance actualisée des deux nœuds fils : `V_cont = e^{-r_common Δt} [p V_up + (1-p) V_down]`.\n"
-                "- **Étape 6 – Prise en compte de l’exercice américain** : pour chaque nœud, on calcule aussi la valeur d’exercice immédiat `V_ex = payoff(S_n)`. La valeur retenue au nœud est `max(V_ex, V_cont)`, ce qui encode la possibilité d’exercer de façon optimale.\n"
-                "- **Étape 7 – Prix initial et visualisation** : la valeur à la racine de l’arbre est le prix de l’option américaine. L’arbre des spots et de valeurs (`spot_tree`, `value_tree`) est ensuite représenté graphiquement pour montrer les zones où l’exercice anticipé devient optimal.\n"
-                "- **Étape 8 – Lien avec les heatmaps** : en répétant ce calcul pour différents `S0` et `K`, on peut construire une surface de prix CRR comparable à celles obtenues via Longstaff–Schwartz ou BSM."
+                "- **Droit d'exercice anticipé** : une option américaine peut être exercée à n'importe quel moment entre la date d'émission et la maturité. Elle offre donc plus de flexibilité qu'une option européenne.\n"
+                "- **Conséquence sur le prix** : cette flexibilité a une valeur. À paramètres identiques (`S0`, `K`, `T`, `r`, `d`, `σ`), le prix d'une option américaine est **au moins** aussi élevé que celui de l'option européenne correspondante.\n"
+                "- **Vision dynamique** : le problème de pricing devient un problème de contrôle optimal : à chaque date de la grille temporelle, l'agent choisit entre exercer immédiatement ou conserver l'option.\n"
+                "- **Lien avec les grecs** : pour les puts notamment, la possibilité d'exercer en avance influence fortement `Delta` et `Theta`, en particulier lorsque le sous-jacent est proche ou sous le strike.\n"
+                "- **Rôle de cet onglet** : il illustre deux grandes familles d'approches numériques pour ce problème : une méthode Monte Carlo (Longstaff–Schwartz) et une méthode par arbre binomial (CRR)."
             ),
         )
-        render_inputs_explainer(
-            "🔧 Paramètres utilisés – CRR",
-            (
-                "- **\"S0 (spot)\"** : valeur de départ du sous‑jacent à la racine de l’arbre.\n"
-                "- **\"K (strike)\"** : strike de l’option américaine modélisée sur l’arbre.\n"
-                "- **\"T (maturité, années)\"** : horizon total de l’option, réparti en `Nombre de pas de l'arbre`.\n"
-                "- **\"Taux sans risque r\"** : utilisé pour l’actualisation et pour calibrer la probabilité neutre au risque.\n"
-                "- **\"Volatilité σ\"** : volatilité reproduite par les facteurs de montée et de descente `u` et `d`.\n"
-                "- **\"Nombre de pas de l'arbre\"** : profondeur de l’arbre binomial (résolution temporelle) choisie via le curseur correspondant."
-            ),
-        )
-        if st.button(
-            f"Calculer le prix américain CRR ({cpflag_am})",
-            key="btn_price_am_crr",
-        ):
-            try:
-                option_am_single = Option(
-                    s0=S0_common,
-                    T=T_common,
-                    K=K_common,
-                    call=(cpflag_am == 'Call'),
-                )
-                # On utilise un arbre de taille moyenne pour le prix ponctuel
-                n_steps_single = 50
-                price_crr_single = crr_pricing(
-                    r=r_common,
-                    sigma=sigma_common,
-                    option=option_am_single,
-                    n=n_steps_single,
-                )
-                st.success(f"Prix américain CRR ({cpflag_am}) ≈ {price_crr_single:.6f} (avec {n_steps_single} pas)")
-            except Exception as exc:
-                st.error(f"Erreur CRR : {exc}")
+        cpflag_am = option_label
+        cpflag_am_char = option_char
         st.caption(
-            f"Paramètres utilisés pour le prix unique CRR : "
-            f"S0={S0_common:.4f}, K={K_common:.4f}, T={T_common:.4f}, "
-            f"r={r_common:.4f}, σ={sigma_common:.4f}"
+            "Les heatmaps affichent les prix call / put sur un carré Spot × Strike centré autour du spot défini dans la barre latérale."
         )
 
-        n_tree_am = st.number_input(
-            "Nombre de pas de l'arbre",
-            value=10,
-            min_value=5,
-            key="n_tree_am",
-            help="Nombre de pas de temps utilisés dans l’arbre binomial CRR.",
+        tab_am_ls, tab_am_crr = st.tabs(
+            ["Longstaff–Schwartz", "Arbre CRR"]
         )
-        option_am_crr = Option(s0=S0_common, T=T_common, K=K_common, call=cpflag_am == "Call")
-        int_n_tree = int(n_tree_am)
-        if int_n_tree > 10:
-            st.info("L'affichage peut devenir difficile à lire pour un nombre de pas supérieur à 10.")
-        # Arbre CRR en dropdown
-        with st.expander("Afficher l'arbre CRR et la heatmap", expanded=False):
-            with st.spinner("Construction de l'arbre CRR"):
-                spot_tree, value_tree = _build_crr_tree(
-                    option=option_am_crr, r=r_common, sigma=sigma_common, n_steps=int_n_tree
+
+        with tab_am_ls:
+            st.subheader("Monte Carlo Longstaff–Schwartz")
+            render_method_explainer(
+                "🧮 Méthode Longstaff–Schwartz (régression Monte Carlo)",
+                (
+                    "- **Objectif** : approximer la stratégie d'exercice optimale d'une option américaine en combinant simulation Monte Carlo et régressions sur la valeur de continuation.\n"
+                    "- **Étape 1 – Simulation des trajectoires** : on simule un grand nombre de trajectoires du sous‑jacent (GBM ou Heston) sous la mesure neutre au risque, en discrétisant `[0, T_common]` en `n_steps_am` pas.\n"
+                    "- **Étape 2 – Calcul des payoffs finaux** : à la dernière date de la grille (≈ maturité), on calcule le payoff européen standard pour chaque trajectoire (call ou put) et on l’utilise comme valeur initiale de continuation.\n"
+                    "- **Étape 3 – Remontée dans le temps (backward induction)** : pour chaque date de la grille, en partant de l’avant‑dernière jusqu’à la première, on considère les trajectoires où l’option est dans la monnaie à cette date.\n"
+                    "- **Étape 4 – Régression de la valeur de continuation** : sur l’ensemble des trajectoires in‑the‑money, on ajuste une régression (souvent polynomiale en `S_t`) entre le prix courant `S_t` et la valeur actualisée des payoffs futurs. Cette régression donne une approximation de la valeur de continuation conditionnelle.\n"
+                    "- **Étape 5 – Décision d’exercice** : pour chaque trajectoire et à chaque date, on compare le payoff d’exercice immédiat à la valeur de continuation régressée. Si le payoff immédiat est plus élevé, on exerce (on fige le payoff sur cette trajectoire et on ignore les valeurs futures) ; sinon, on conserve la valeur de continuation.\n"
+                    "- **Étape 6 – Agrégation des payoffs** : après avoir remonté toutes les dates, chaque trajectoire porte un payoff actualisé correspondant à la stratégie d’exercice optimale approximée. Le prix de l’option est la moyenne de ces payoffs sur l’ensemble des trajectoires.\n"
+                    "- **Étape 7 – Utilisation pour les heatmaps** : le schéma précédent est réutilisé sur une grille de `S0` et `K` pour construire des surfaces de prix américains, qui peuvent être comparées aux surfaces européennes ou CRR.\n"
+                    "- **Intérêt** : la méthode est très flexible (capable de traiter des payoffs complexes) tout en évitant la construction explicite d’un arbre multidimensionnel."
+                ),
+            )
+            render_inputs_explainer(
+                "🔧 Paramètres utilisés – Longstaff–Schwartz",
+                (
+                    "- **Paramètres communs de la barre latérale** :\n"
+                    "  - **\"S0 (spot)\"** : niveau de référence du sous‑jacent pour les heatmaps et les simulations.\n"
+                    "  - **\"K (strike)\"** : strike de l’option américaine utilisée pour le payoff.\n"
+                    "  - **\"T (maturité, années)\"** : horizon de temps de l’option américaine, donc durée des trajectoires simulées.\n"
+                    "  - **\"Taux sans risque r\"** et **\"Dividende continu d\"** : entrent dans le drift neutre au risque et dans l’actualisation des payoffs.\n"
+                    "  - **\"Volatilité σ\"** : volatilité du sous‑jacent lorsque le processus choisi est un GBM.\n"
+                    "- **\"Processus sous-jacent\"** : menu déroulant qui permet de choisir entre un **Geometric Brownian Motion** et un **processus de Heston** pour simuler `S_t`.\n"
+                    "- **Si \"Geometric Brownian Motion\" est sélectionné** : seules les entrées ci‑dessus (dont \"Volatilité σ\") pilotent la dynamique.\n"
+                    "- **Si \"Heston\" est sélectionné** : les champs suivants apparaissent et décrivent la variance stochastique :\n"
+                    "  - **\"κ (vitesse de rappel)\"**, **\"θ (variance long terme)\"**, **\"η (vol de la variance)\"**, **\"ρ (corrélation)\"**, **\"v0 (variance initiale)\"**.\n"
+                    "- **\"Trajectoires Monte Carlo\"** : nombre de trajectoires utilisées pour estimer le prix américain.\n"
+                    "- **\"Pas de temps\"** : nombre de dates intermédiaires sur lesquelles l’algorithme Longstaff–Schwartz peut potentiellement décider d’exercer l’option."
+                ),
+            )
+            process_type_am = st.selectbox(
+                "Processus sous-jacent",
+                ["Geometric Brownian Motion", "Heston"],
+                key=_k("process_type_am"),
+                help="Choix du modèle utilisé pour simuler le sous-jacent (GBM ou Heston).",
+            )
+            n_paths_am = st.number_input(
+                "Trajectoires Monte Carlo",
+                value=1000,
+                min_value=100,
+                key=_k("n_paths_am"),
+                help="Nombre de trajectoires Monte Carlo utilisées pour le prix américain.",
+            )
+            n_steps_am = st.number_input(
+                "Pas de temps",
+                value=50,
+                min_value=1,
+                key=_k("n_steps_am"),
+                help="Nombre de dates intermédiaires possibles d’exercice dans Longstaff–Schwartz.",
+            )
+    
+            if process_type_am == "Geometric Brownian Motion":
+                process_am = GeometricBrownianMotion(mu=r_common - d_common, sigma=sigma_common)
+                v0_am = None
+            else:
+                kappa_am = float(st.session_state.get("heston_kappa_common", 2.0))
+                theta_am = float(st.session_state.get("heston_theta_common", 0.04))
+                eta_am = float(st.session_state.get("heston_eta_common", 0.5))
+                rho_am = float(st.session_state.get("heston_rho_common", -0.7))
+                v0_am = float(st.session_state.get("heston_v0_common", 0.04))
+                st.caption(
+                    f"Paramètres de Heston (sidebar) : κ={kappa_am:.4f}, θ={theta_am:.4f}, η={eta_am:.4f}, "
+                    f"ρ={rho_am:.4f}, v0={v0_am:.4f}"
                 )
-            st.write("**Représentation graphique**")
-            fig_tree = _plot_crr_tree(spot_tree, value_tree)
-            st.pyplot(fig_tree)
-            plt.close(fig_tree)
-            
-            with st.spinner("Calcul de la heatmap CRR"):
-                call_heatmap_crr, put_heatmap_crr = _compute_american_crr_heatmaps(
+                process_am = HestonProcess(
+                    mu=r_common - d_common, kappa=kappa_am, theta=theta_am, eta=eta_am, rho=rho_am
+                )
+    
+            if st.button(
+                f"Calculer le prix américain L-S ({cpflag_am})",
+                key=_k("btn_price_am_ls"),
+            ):
+                try:
+                    option_ls = Option(
+                        s0=S0_common,
+                        T=T_common,
+                        K=K_common,
+                        v0=v0_am,
+                        call=(cpflag_am == "Call"),
+                    )
+                    price_ls = longstaff_schwartz_price(
+                        option=option_ls,
+                        process=process_am,
+                        n_paths=int(n_paths_am),
+                        n_steps=int(n_steps_am),
+                    )
+                    st.success(f"Prix américain Longstaff–Schwartz ({cpflag_am}) = {price_ls:.6f}")
+                except Exception as exc:
+                    st.error(f"Erreur Longstaff–Schwartz : {exc}")
+            st.caption(
+                f"Paramètres utilisés pour le prix unique L-S : "
+                f"S0={S0_common:.4f}, K={K_common:.4f}, T={T_common:.4f}, "
+                f"r={r_common:.4f}, d={d_common:.4f}, σ={sigma_common:.4f}, "
+                f"N_paths={int(n_paths_am)}, N_steps={int(n_steps_am)}"
+            )
+    
+            with st.spinner("Calcul des heatmaps Longstaff–Schwartz"):
+                call_heatmap_ls, put_heatmap_ls = _compute_american_ls_heatmaps(
                     heatmap_spot_values,
                     heatmap_strike_values,
                     T_common,
-                    r_common,
-                    sigma_common,
-                    int_n_tree,
+                    process_am,
+                    int(n_paths_am),
+                    int(n_steps_am),
+                    v0_am,
                 )
-            if cpflag_am == "Call":
-                st.write(f"Heatmap {cpflag_am} (CRR)")
-                _render_heatmap(call_heatmap_crr, heatmap_spot_values, heatmap_strike_values, f"{cpflag_am} (CRR)")
-            else:
-                st.write(f"Heatmap {cpflag_am} (CRR)")
-                _render_heatmap(put_heatmap_crr, heatmap_spot_values, heatmap_strike_values, f"{cpflag_am} (CRR)")
-
-
-with tab_lookback:
-    st.header("Options lookback (floating strike)")
-    render_unlock_sidebar_button("tab_lookback", "🔓 Réactiver T (onglet Lookback)")
-    render_general_definition_explainer(
-        "🔍 Comprendre les options lookback",
-        (
-            "- **Payoff dépendant du chemin** : une option lookback ne dépend plus uniquement de `S_T`, mais de l'historique complet de la trajectoire du sous‑jacent (par exemple de son maximum ou de son minimum atteint avant l'échéance).\n"
-            "- **Floating strike** : dans cet onglet, on considère des structures où le strike effectif est défini à partir d'un extrême de la trajectoire, par exemple le maximum historique pour un put, ou le minimum pour un call.\n"
-            "- **Intérêt intuitif** : ce type d'option permet de \"regarder en arrière\" pour déterminer le niveau de référence du contrat, offrant une protection renforcée contre des mouvements extrêmes défavorables.\n"
-            "- **Dimension temporelle** : plus la maturité est longue, plus le sous‑jacent a de chances de visiter des extrêmes éloignés, ce qui impacte directement le niveau du payoff.\n"
-            "- **Objectif de cet onglet** : comparer une formule fermée (lorsqu'elle est disponible) à une approche Monte Carlo pour des options lookback, et visualiser l'effet des paramètres via des heatmaps Spot × Maturité."
-        ),
-    )
-    st.caption(
-        "Les heatmaps affichent les prix lookback sur un carré Spot × Maturité centré autour des valeurs définies dans la barre latérale."
-    )
-
-    tab_lb_exact, tab_lb_mc = st.tabs(["Exacte", "Monte Carlo"])
-
-    with tab_lb_exact:
-        st.subheader("Formule exacte")
-        render_method_explainer(
-            "📗 Méthode analytique pour lookback",
-            (
-                "- **Étape 1 – Choix du modèle sous‑jacent** : on se place dans le cadre Black–Scholes standard avec volatilité constante `σ`, taux sans risque `r` et éventuellement dividende continu. Le sous‑jacent suit un mouvement brownien géométrique.\n"
-                "- **Étape 2 – Caractérisation des extrêmes** : on utilise des résultats de théorie des processus stochastiques sur la distribution du maximum (ou minimum) d’un mouvement brownien géométrique sur un horizon `[0, T]`.\n"
-                "- **Étape 3 – Réécriture du payoff** : le payoff lookback (par exemple basé sur `max_t S_t` ou `min_t S_t`) est réécrit de manière à isoler des termes qui ressemblent à des payoffs d’options européennes classiques, plus des termes correctifs dépendant des extrêmes.\n"
-                "- **Étape 4 – Intégration analytique** : à partir de cette réécriture, on calcule l’espérance neutre au risque de ce payoff en intégrant par rapport aux densités des extrêmes et du sous‑jacent. On obtient des formules fermées impliquant des fonctions de répartition de la loi normale et des combinaisons exponentielles.\n"
-                "- **Étape 5 – Implémentation numérique** : les formules fermées sont implémentées sous forme de fonctions vectorisées qui prennent en entrée `(S0, T, σ, r, …)` et renvoient directement le prix de l’option lookback pour chaque point de la grille Spot × Maturité.\n"
-                "- **Étape 6 – Construction de la heatmap** : pour chaque valeur de `S0` et `T` de la grille, la formule analytique est évaluée, ce qui remplit une matrice de prix. Cette matrice est ensuite affichée sous forme de carte de chaleur.\n"
-                "- **Étape 7 – Rôle de benchmark** : cette solution analytique sert de référence \"exacte\" pour valider la méthode Monte Carlo : en comparant les deux surfaces, on quantifie l’erreur de simulation et on ajuste le nombre d’itérations ou la granularité temporelle si nécessaire."
-            ),
-        )
-        render_inputs_explainer(
-            "🔧 Paramètres utilisés – Lookback exact",
-            (
-                "- **\"S0 (spot)\"** : fixe le centre de l’axe des spots de la heatmap sur lequel la formule exacte est évaluée.\n"
-                "- **\"T (maturité, années)\"** : fournit les maturités à partir desquelles on construit l’axe vertical de la heatmap.\n"
-                "- **\"t (temps courant)\"** : champ numérique permettant de considérer une option lookback déjà en cours de vie (temps écoulé depuis l’émission).\n"
-                "- **\"Taux sans risque r\"** : utilisé pour actualiser l’espérance du payoff dans la formule fermée.\n"
-                "- **\"Volatilité σ\"** : volatilité constante supposée par le modèle BSM sous‑jacent."
-            ),
-        )
-        t0_lb = st.number_input(
-            "t (temps courant)",
-            value=0.0,
-            min_value=0.0,
-            key="t0_lb_exact",
-            help="Temps déjà écoulé depuis l’émission de l’option lookback (en années).",
-        )
-        r_lb = max(r_common, 1e-6)
-        if st.button(
-            "Calculer le prix lookback exact",
-            key="btn_price_lb_exact",
-        ):
-            try:
-                lookback_opt = lookback_call_option(
-                    T=float(T_common),
-                    t=float(t0_lb),
-                    S0=float(common_spot_value),
-                    r=float(r_lb),
-                    sigma=float(sigma_common),
-                )
-                price_lb_exact = float(lookback_opt.price_exact())
-                st.success(f"Prix lookback (formule exacte) = {price_lb_exact:.6f}")
-            except Exception as exc:
-                st.error(f"Erreur lookback (formule exacte) : {exc}")
-        st.caption(
-            f"Paramètres utilisés pour le prix lookback exact : "
-            f"S0={common_spot_value:.4f}, T={T_common:.4f}, r={r_lb:.4f}, σ={sigma_common:.4f}, t={t0_lb:.4f}"
-        )
-        with st.spinner("Calcul de la heatmap exacte"):
-            heatmap_lb_exact = _compute_lookback_exact_heatmap(
+            _render_heatmaps_for_current_option(
+                "Longstaff–Schwartz",
+                call_heatmap_ls,
+                put_heatmap_ls,
                 heatmap_spot_values,
-                heatmap_maturity_values,
-                t0_lb,
-                r_lb,
-                sigma_common,
+                heatmap_strike_values,
             )
-        st.write("Heatmap Lookback (formule exacte)")
-        _render_heatmap(heatmap_lb_exact, heatmap_spot_values, heatmap_maturity_values, "Prix Lookback (Exact)")
-
-    with tab_lb_mc:
-        st.subheader("Monte Carlo lookback")
-        render_method_explainer(
-            "🎲 Méthode Monte Carlo pour lookback",
-            (
-                "- **Étape 1 – Grille temporelle** : on découpe l’horizon `[0, T]` en un certain nombre de pas de temps. Plus la grille est fine, mieux on détecte les extrêmes du sous‑jacent.\n"
-                "- **Étape 2 – Simulation des trajectoires** : on simule, sous la mesure neutre au risque, de nombreuses trajectoires `S_t` via un GBM avec volatilité constante `σ`, en appliquant à chaque pas un choc gaussien.\n"
-                "- **Étape 3 – Suivi de l’extrême** : pour chaque trajectoire, on met à jour à chaque pas le maximum (ou le minimum) atteint jusqu’alors. Cette valeur représente l’\"historique condensé\" de la trajectoire pour le payoff lookback.\n"
-                "- **Étape 4 – Évaluation du payoff** : à la date finale, on calcule le payoff en fonction de cet extrême (par exemple `max(M_T - K, 0)` où `M_T = max_{0≤t≤T} S_t`), ou les variantes floating strike selon le type de contrat.\n"
-                "- **Étape 5 – Actualisation** : on actualise le payoff obtenu sur chaque trajectoire au taux sans risque `r_common` jusqu’à la date présente.\n"
-                "- **Étape 6 – Moyenne Monte Carlo** : le prix est obtenu en moyennant ces payoffs actualisés sur l’ensemble des trajectoires simulées.\n"
-                "- **Étape 7 – Construction de la heatmap** : on répète l’algorithme pour toutes les combinaisons `(S0, T)` de la grille, de sorte à remplir une matrice de prix lookback Monte Carlo comparable à la surface analytique.\n"
-                "- **Étape 8 – Analyse d’erreur** : en comparant cette surface MC à la surface exacte, on évalue la qualité de la simulation (variabilité statistique, biais de discretisation des extrêmes) et on ajuste `n_iters_lb` ou la taille des pas de temps si nécessaire."
-            ),
-        )
-        render_inputs_explainer(
-            "🔧 Paramètres utilisés – Lookback Monte Carlo",
-            (
-                "- **\"S0 (spot)\"** : centre de l’axe des spots sur lequel les trajectoires lookback sont simulées.\n"
-                "- **\"T (maturité, années)\"** : ensemble des maturités pour lesquelles on simule les trajectoires et construit la heatmap.\n"
-                "- **\"t (temps courant) MC\"** : temps déjà écoulé avant le début de la période de simulation, pour traiter des options en cours de vie.\n"
-                "- **\"Taux sans risque r\"** : intervient dans le drift neutre au risque et l’actualisation des payoffs.\n"
-                "- **\"Volatilité σ\"** : volatilité supposée constante dans les trajectoires Monte Carlo.\n"
-                "- **\"Itérations Monte Carlo\"** : nombre de trajectoires simulées pour chaque couple `(S0, T)`."
-            ),
-        )
-        t0_lb_mc = st.number_input(
-            "t (temps courant) MC",
-            value=0.0,
-            min_value=0.0,
-            key="t0_lb_mc",
-            help="Temps déjà écoulé avant la période de simulation Monte Carlo (en années).",
-        )
-        n_iters_lb = st.number_input(
-            "Itérations Monte Carlo",
-            value=1000,
-            min_value=100,
-            key="n_iters_lb_mc",
-            help="Nombre de trajectoires lookback simulées pour chaque couple (S0, T).",
-        )
-        r_lb_mc = max(r_common, 1e-6)
-        if st.button(
-            "Calculer le prix lookback MC",
-            key="btn_price_lb_mc",
-        ):
-            try:
-                lookback_opt_mc = lookback_call_option(
-                    T=float(T_common),
-                    t=float(t0_lb_mc),
-                    S0=float(common_spot_value),
-                    r=float(r_lb_mc),
-                    sigma=float(sigma_common),
+    
+        with tab_am_crr:
+            st.subheader("Arbre binomial CRR")
+            render_method_explainer(
+                "🌳 Méthode binomiale CRR pour options américaines",
+                (
+                    "- **Étape 1 – Discrétisation de l’horizon** : la maturité `T_common` est découpée en `n_tree_am` pas de temps de durée `Δt = T_common / n_tree_am`.\n"
+                    "- **Étape 2 – Paramétrage de l’arbre** : à partir de `σ` et `Δt`, on construit les facteurs de hausse et de baisse, typiquement `u = e^{σ√Δt}` et `d = 1/u`. On en déduit une probabilité neutre au risque `p` telle que `E_Q[S_{t+Δt}] = S_t e^{(r-d)Δt}`.\n"
+                    "- **Étape 3 – Construction de l’arbre des spots** : en partant de `S0_common`, on génère les valeurs de `S` à chaque nœud du maillage binomial (chaque niveau correspond à un temps, chaque nœud à un nombre de hausses/baisse cumulées).\n"
+                    "- **Étape 4 – Initialisation des payoffs à maturité** : à la dernière ligne de l’arbre (temps `T_common`), on calcule le payoff européen `max(±(S_T-K_common), 0)` pour chaque nœud et on le stocke dans `value_tree`.\n"
+                    "- **Étape 5 – Rétro‑propagation (valeur de continuation)** : en remontant niveau par niveau, on calcule à chaque nœud la valeur de continuation comme espérance actualisée des deux nœuds fils : `V_cont = e^{-r_common Δt} [p V_up + (1-p) V_down]`.\n"
+                    "- **Étape 6 – Prise en compte de l’exercice américain** : pour chaque nœud, on calcule aussi la valeur d’exercice immédiat `V_ex = payoff(S_n)`. La valeur retenue au nœud est `max(V_ex, V_cont)`, ce qui encode la possibilité d’exercer de façon optimale.\n"
+                    "- **Étape 7 – Prix initial et visualisation** : la valeur à la racine de l’arbre est le prix de l’option américaine. L’arbre des spots et de valeurs (`spot_tree`, `value_tree`) est ensuite représenté graphiquement pour montrer les zones où l’exercice anticipé devient optimal.\n"
+                    "- **Étape 8 – Lien avec les heatmaps** : en répétant ce calcul pour différents `S0` et `K`, on peut construire une surface de prix CRR comparable à celles obtenues via Longstaff–Schwartz ou BSM."
+                ),
+            )
+            render_inputs_explainer(
+                "🔧 Paramètres utilisés – CRR",
+                (
+                    "- **\"S0 (spot)\"** : valeur de départ du sous‑jacent à la racine de l’arbre.\n"
+                    "- **\"K (strike)\"** : strike de l’option américaine modélisée sur l’arbre.\n"
+                    "- **\"T (maturité, années)\"** : horizon total de l’option, réparti en `Nombre de pas de l'arbre`.\n"
+                    "- **\"Taux sans risque r\"** : utilisé pour l’actualisation et pour calibrer la probabilité neutre au risque.\n"
+                    "- **\"Volatilité σ\"** : volatilité reproduite par les facteurs de montée et de descente `u` et `d`.\n"
+                    "- **\"Nombre de pas de l'arbre\"** : profondeur de l’arbre binomial (résolution temporelle) choisie via le curseur correspondant."
+                ),
+            )
+            if st.button(
+                f"Calculer le prix américain CRR ({cpflag_am})",
+                key=_k("btn_price_am_crr"),
+            ):
+                try:
+                    option_am_single = Option(
+                        s0=S0_common,
+                        T=T_common,
+                        K=K_common,
+                        call=(cpflag_am == 'Call'),
+                    )
+                    # On utilise un arbre de taille moyenne pour le prix ponctuel
+                    n_steps_single = 50
+                    price_crr_single = crr_pricing(
+                        r=r_common,
+                        sigma=sigma_common,
+                        option=option_am_single,
+                        n=n_steps_single,
+                    )
+                    st.success(f"Prix américain CRR ({cpflag_am}) ≈ {price_crr_single:.6f} (avec {n_steps_single} pas)")
+                except Exception as exc:
+                    st.error(f"Erreur CRR : {exc}")
+            st.caption(
+                f"Paramètres utilisés pour le prix unique CRR : "
+                f"S0={S0_common:.4f}, K={K_common:.4f}, T={T_common:.4f}, "
+                f"r={r_common:.4f}, σ={sigma_common:.4f}"
+            )
+    
+            n_tree_am = st.number_input(
+                "Nombre de pas de l'arbre",
+                value=10,
+                min_value=5,
+                key=_k("n_tree_am"),
+                help="Nombre de pas de temps utilisés dans l’arbre binomial CRR.",
+            )
+            option_am_crr = Option(s0=S0_common, T=T_common, K=K_common, call=cpflag_am == "Call")
+            int_n_tree = int(n_tree_am)
+            if int_n_tree > 10:
+                st.info("L'affichage peut devenir difficile à lire pour un nombre de pas supérieur à 10.")
+            # Arbre CRR en dropdown
+            with st.expander("Afficher l'arbre CRR et la heatmap", expanded=False):
+                with st.spinner("Construction de l'arbre CRR"):
+                    spot_tree, value_tree = _build_crr_tree(
+                        option=option_am_crr, r=r_common, sigma=sigma_common, n_steps=int_n_tree
+                    )
+                st.write("**Représentation graphique**")
+                fig_tree = _plot_crr_tree(spot_tree, value_tree)
+                st.pyplot(fig_tree)
+                plt.close(fig_tree)
+                
+                with st.spinner("Calcul de la heatmap CRR"):
+                    call_heatmap_crr, put_heatmap_crr = _compute_american_crr_heatmaps(
+                        heatmap_spot_values,
+                        heatmap_strike_values,
+                        T_common,
+                        r_common,
+                        sigma_common,
+                        int_n_tree,
+                    )
+                _render_heatmaps_for_current_option(
+                    "CRR",
+                    call_heatmap_crr,
+                    put_heatmap_crr,
+                    heatmap_spot_values,
+                    heatmap_strike_values,
                 )
-                price_lb_mc = float(lookback_opt_mc.price_monte_carlo(int(n_iters_lb)))
-                st.success(f"Prix lookback (Monte Carlo) = {price_lb_mc:.6f}")
-            except Exception as exc:
-                st.error(f"Erreur lookback Monte Carlo : {exc}")
-        st.caption(
-            f"Paramètres utilisés pour le prix lookback MC : "
-            f"S0={common_spot_value:.4f}, T={T_common:.4f}, r={r_lb_mc:.4f}, σ={sigma_common:.4f}, "
-            f"t={t0_lb_mc:.4f}, N_iters={int(n_iters_lb)}"
+    
+    
+    with tab_lookback:
+        st.header("Options lookback (floating strike)")
+        render_unlock_sidebar_button("tab_lookback", "🔓 Réactiver T (onglet Lookback)")
+        render_general_definition_explainer(
+            "🔍 Comprendre les options lookback",
+            (
+                "- **Payoff dépendant du chemin** : une option lookback ne dépend plus uniquement de `S_T`, mais de l'historique complet de la trajectoire du sous‑jacent (par exemple de son maximum ou de son minimum atteint avant l'échéance).\n"
+                "- **Floating strike** : dans cet onglet, on considère des structures où le strike effectif est défini à partir d'un extrême de la trajectoire, par exemple le maximum historique pour un put, ou le minimum pour un call.\n"
+                "- **Intérêt intuitif** : ce type d'option permet de \"regarder en arrière\" pour déterminer le niveau de référence du contrat, offrant une protection renforcée contre des mouvements extrêmes défavorables.\n"
+                "- **Dimension temporelle** : plus la maturité est longue, plus le sous‑jacent a de chances de visiter des extrêmes éloignés, ce qui impacte directement le niveau du payoff.\n"
+                "- **Objectif de cet onglet** : comparer une formule fermée (lorsqu'elle est disponible) à une approche Monte Carlo pour des options lookback, et visualiser l'effet des paramètres via des heatmaps Spot × Maturité."
+            ),
         )
-        if st.checkbox("Afficher la heatmap Lookback (Monte Carlo)", value=False, key="show_lb_mc_heatmap"):
-            with st.spinner("Calcul de la heatmap Monte Carlo"):
-                heatmap_lb_mc = _compute_lookback_mc_heatmap(
+        st.caption(
+            "Les heatmaps affichent les prix lookback sur un carré Spot × Maturité centré autour des valeurs définies dans la barre latérale."
+        )
+    
+        tab_lb_exact, tab_lb_mc = st.tabs(["Exacte", "Monte Carlo"])
+    
+        with tab_lb_exact:
+            st.subheader("Formule exacte")
+            render_method_explainer(
+                "📗 Méthode analytique pour lookback",
+                (
+                    "- **Étape 1 – Choix du modèle sous‑jacent** : on se place dans le cadre Black–Scholes standard avec volatilité constante `σ`, taux sans risque `r` et éventuellement dividende continu. Le sous‑jacent suit un mouvement brownien géométrique.\n"
+                    "- **Étape 2 – Caractérisation des extrêmes** : on utilise des résultats de théorie des processus stochastiques sur la distribution du maximum (ou minimum) d’un mouvement brownien géométrique sur un horizon `[0, T]`.\n"
+                    "- **Étape 3 – Réécriture du payoff** : le payoff lookback (par exemple basé sur `max_t S_t` ou `min_t S_t`) est réécrit de manière à isoler des termes qui ressemblent à des payoffs d’options européennes classiques, plus des termes correctifs dépendant des extrêmes.\n"
+                    "- **Étape 4 – Intégration analytique** : à partir de cette réécriture, on calcule l’espérance neutre au risque de ce payoff en intégrant par rapport aux densités des extrêmes et du sous‑jacent. On obtient des formules fermées impliquant des fonctions de répartition de la loi normale et des combinaisons exponentielles.\n"
+                    "- **Étape 5 – Implémentation numérique** : les formules fermées sont implémentées sous forme de fonctions vectorisées qui prennent en entrée `(S0, T, σ, r, …)` et renvoient directement le prix de l’option lookback pour chaque point de la grille Spot × Maturité.\n"
+                    "- **Étape 6 – Construction de la heatmap** : pour chaque valeur de `S0` et `T` de la grille, la formule analytique est évaluée, ce qui remplit une matrice de prix. Cette matrice est ensuite affichée sous forme de carte de chaleur.\n"
+                    "- **Étape 7 – Rôle de benchmark** : cette solution analytique sert de référence \"exacte\" pour valider la méthode Monte Carlo : en comparant les deux surfaces, on quantifie l’erreur de simulation et on ajuste le nombre d’itérations ou la granularité temporelle si nécessaire."
+                ),
+            )
+            render_inputs_explainer(
+                "🔧 Paramètres utilisés – Lookback exact",
+                (
+                    "- **\"S0 (spot)\"** : fixe le centre de l’axe des spots de la heatmap sur lequel la formule exacte est évaluée.\n"
+                    "- **\"T (maturité, années)\"** : fournit les maturités à partir desquelles on construit l’axe vertical de la heatmap.\n"
+                    "- **\"t (temps courant)\"** : champ numérique permettant de considérer une option lookback déjà en cours de vie (temps écoulé depuis l’émission).\n"
+                    "- **\"Taux sans risque r\"** : utilisé pour actualiser l’espérance du payoff dans la formule fermée.\n"
+                    "- **\"Volatilité σ\"** : volatilité constante supposée par le modèle BSM sous‑jacent."
+                ),
+            )
+            t0_lb = st.number_input(
+                "t (temps courant)",
+                value=0.0,
+                min_value=0.0,
+                key=_k("t0_lb_exact"),
+                help="Temps déjà écoulé depuis l’émission de l’option lookback (en années).",
+            )
+            r_lb = max(r_common, 1e-6)
+            if st.button(
+                "Calculer le prix lookback exact",
+                key=_k("btn_price_lb_exact"),
+            ):
+                try:
+                    lookback_opt = lookback_call_option(
+                        T=float(T_common),
+                        t=float(t0_lb),
+                        S0=float(common_spot_value),
+                        r=float(r_lb),
+                        sigma=float(sigma_common),
+                    )
+                    price_lb_exact = float(lookback_opt.price_exact())
+                    st.success(f"Prix lookback (formule exacte) = {price_lb_exact:.6f}")
+                except Exception as exc:
+                    st.error(f"Erreur lookback (formule exacte) : {exc}")
+            st.caption(
+                f"Paramètres utilisés pour le prix lookback exact : "
+                f"S0={common_spot_value:.4f}, T={T_common:.4f}, r={r_lb:.4f}, σ={sigma_common:.4f}, t={t0_lb:.4f}"
+            )
+            with st.spinner("Calcul de la heatmap exacte"):
+                heatmap_lb_exact = _compute_lookback_exact_heatmap(
                     heatmap_spot_values,
                     heatmap_maturity_values,
-                    t0_lb_mc,
-                    r_lb_mc,
+                    t0_lb,
+                    r_lb,
                     sigma_common,
-                    int(n_iters_lb),
                 )
-            st.write("Heatmap Lookback (Monte Carlo)")
-            _render_heatmap(heatmap_lb_mc, heatmap_spot_values, heatmap_maturity_values, "Prix Lookback (MC)")
-
-
-with tab_barrier:
-    st.header("Options barrière")
-    render_unlock_sidebar_button("tab_barrier", "🔓 Réactiver T (onglet Barrière)")
-    render_general_definition_explainer(
-        "🚧 Comprendre les options barrière",
-        (
-            "- **Principe de base** : une option barrière est activée ou désactivée en fonction du franchissement d'un niveau de prix prédéfini (`Hu` ou `Hd`). La trajectoire du sous‑jacent entre `0` et `T` devient donc déterminante.\n"
-            "- **Knock-out** : l'option cesse d'exister dès que la barrière est touchée ; le droit d'exercer à l'échéance est alors perdu.\n"
-            "- **Knock-in** : à l’inverse, l’option ne \"prend naissance\" que si la barrière a été franchie au moins une fois avant l’échéance.\n"
-            "- **Up / Down** : on distingue les barrières **Up** (situées au‑dessus du spot initial) des barrières **Down** (situées en dessous), ce qui permet de modéliser des scénarios de protection ou de conditionnalité différentes.\n"
-            "- **Sensibilité au chemin** : ces produits sont très sensibles au maillage temporel : plus les pas sont grossiers, plus on risque de manquer des franchissements de barrière entre deux dates de simulation.\n"
-            "- **Objectif de l'onglet** : montrer comment le prix réagit aux combinaisons `S0`, `K`, `T`, `Hu/Hd`, `σ` et au type de barrière (in/out, up/down) via des simulations Monte Carlo."
-        ),
-    )
-    (
-        tab_barrier_up_out,
-        tab_barrier_down_out,
-        tab_barrier_up_in,
-        tab_barrier_down_in,
-    ) = st.tabs(["Up-and-out", "Down-and-out", "Up-and-in", "Down-and-in"])
-
-    with tab_barrier_up_out:
-        st.subheader("Up-and-out")
-        render_method_explainer(
-            "⬆️ Méthode Monte Carlo – Up-and-out",
+            st.write("Heatmap Lookback (formule exacte)")
+            _render_heatmap(heatmap_lb_exact, heatmap_spot_values, heatmap_maturity_values, "Prix Lookback (Exact)")
+    
+        with tab_lb_mc:
+            st.subheader("Monte Carlo lookback")
+            render_method_explainer(
+                "🎲 Méthode Monte Carlo pour lookback",
+                (
+                    "- **Étape 1 – Grille temporelle** : on découpe l’horizon `[0, T]` en un certain nombre de pas de temps. Plus la grille est fine, mieux on détecte les extrêmes du sous‑jacent.\n"
+                    "- **Étape 2 – Simulation des trajectoires** : on simule, sous la mesure neutre au risque, de nombreuses trajectoires `S_t` via un GBM avec volatilité constante `σ`, en appliquant à chaque pas un choc gaussien.\n"
+                    "- **Étape 3 – Suivi de l’extrême** : pour chaque trajectoire, on met à jour à chaque pas le maximum (ou le minimum) atteint jusqu’alors. Cette valeur représente l’\"historique condensé\" de la trajectoire pour le payoff lookback.\n"
+                    "- **Étape 4 – Évaluation du payoff** : à la date finale, on calcule le payoff en fonction de cet extrême (par exemple `max(M_T - K, 0)` où `M_T = max_{0≤t≤T} S_t`), ou les variantes floating strike selon le type de contrat.\n"
+                    "- **Étape 5 – Actualisation** : on actualise le payoff obtenu sur chaque trajectoire au taux sans risque `r_common` jusqu’à la date présente.\n"
+                    "- **Étape 6 – Moyenne Monte Carlo** : le prix est obtenu en moyennant ces payoffs actualisés sur l’ensemble des trajectoires simulées.\n"
+                    "- **Étape 7 – Construction de la heatmap** : on répète l’algorithme pour toutes les combinaisons `(S0, T)` de la grille, de sorte à remplir une matrice de prix lookback Monte Carlo comparable à la surface analytique.\n"
+                    "- **Étape 8 – Analyse d’erreur** : en comparant cette surface MC à la surface exacte, on évalue la qualité de la simulation (variabilité statistique, biais de discretisation des extrêmes) et on ajuste `n_iters_lb` ou la taille des pas de temps si nécessaire."
+                ),
+            )
+            render_inputs_explainer(
+                "🔧 Paramètres utilisés – Lookback Monte Carlo",
+                (
+                    "- **\"S0 (spot)\"** : centre de l’axe des spots sur lequel les trajectoires lookback sont simulées.\n"
+                    "- **\"T (maturité, années)\"** : ensemble des maturités pour lesquelles on simule les trajectoires et construit la heatmap.\n"
+                    "- **\"t (temps courant) MC\"** : temps déjà écoulé avant le début de la période de simulation, pour traiter des options en cours de vie.\n"
+                    "- **\"Taux sans risque r\"** : intervient dans le drift neutre au risque et l’actualisation des payoffs.\n"
+                    "- **\"Volatilité σ\"** : volatilité supposée constante dans les trajectoires Monte Carlo.\n"
+                    "- **\"Itérations Monte Carlo\"** : nombre de trajectoires simulées pour chaque couple `(S0, T)`."
+                ),
+            )
+            t0_lb_mc = st.number_input(
+                "t (temps courant) MC",
+                value=0.0,
+                min_value=0.0,
+                key=_k("t0_lb_mc"),
+                help="Temps déjà écoulé avant la période de simulation Monte Carlo (en années).",
+            )
+            n_iters_lb = st.number_input(
+                "Itérations Monte Carlo",
+                value=1000,
+                min_value=100,
+                key=_k("n_iters_lb_mc"),
+                help="Nombre de trajectoires lookback simulées pour chaque couple (S0, T).",
+            )
+            r_lb_mc = max(r_common, 1e-6)
+            if st.button(
+                "Calculer le prix lookback MC",
+                key=_k("btn_price_lb_mc"),
+            ):
+                try:
+                    lookback_opt_mc = lookback_call_option(
+                        T=float(T_common),
+                        t=float(t0_lb_mc),
+                        S0=float(common_spot_value),
+                        r=float(r_lb_mc),
+                        sigma=float(sigma_common),
+                    )
+                    price_lb_mc = float(lookback_opt_mc.price_monte_carlo(int(n_iters_lb)))
+                    st.success(f"Prix lookback (Monte Carlo) = {price_lb_mc:.6f}")
+                except Exception as exc:
+                    st.error(f"Erreur lookback Monte Carlo : {exc}")
+            st.caption(
+                f"Paramètres utilisés pour le prix lookback MC : "
+                f"S0={common_spot_value:.4f}, T={T_common:.4f}, r={r_lb_mc:.4f}, σ={sigma_common:.4f}, "
+                f"t={t0_lb_mc:.4f}, N_iters={int(n_iters_lb)}"
+            )
+            if st.checkbox("Afficher la heatmap Lookback (Monte Carlo)", value=False, key=_k("show_lb_mc_heatmap")):
+                with st.spinner("Calcul de la heatmap Monte Carlo"):
+                    heatmap_lb_mc = _compute_lookback_mc_heatmap(
+                        heatmap_spot_values,
+                        heatmap_maturity_values,
+                        t0_lb_mc,
+                        r_lb_mc,
+                        sigma_common,
+                        int(n_iters_lb),
+                    )
+                st.write("Heatmap Lookback (Monte Carlo)")
+                _render_heatmap(heatmap_lb_mc, heatmap_spot_values, heatmap_maturity_values, "Prix Lookback (MC)")
+    
+    
+    with tab_barrier:
+        st.header("Options barrière")
+        render_unlock_sidebar_button("tab_barrier", "🔓 Réactiver T (onglet Barrière)")
+        render_general_definition_explainer(
+            "🚧 Comprendre les options barrière",
             (
-                "- **Étape 1 – Définition du niveau de barrière** : on fixe une barrière haute `Hu` strictement au‑dessus du spot `S0_common`. Le contrat stipule qu’en cas de franchissement de `Hu` avant `T`, l’option est annulée.\n"
-                "- **Étape 2 – Simulation des trajectoires** : on simule des trajectoires `S_t` sous la mesure neutre au risque (GBM) en discrétisant `[0, T_common]` en `n_steps_up` pas de temps.\n"
-                "- **Étape 3 – Détection du knock‑out** : pour chaque trajectoire, on initialise un indicateur `knocked_out = False`. À chaque pas, si `S_t ≥ Hu_up`, on met `knocked_out = True` et on peut considérer que la trajectoire ne contribuera plus au payoff.\n"
-                "- **Étape 4 – Calcul du payoff terminal** : à la maturité, pour les trajectoires qui ne sont pas en knock‑out (`knocked_out = False`), on calcule le payoff européen standard `max(±(S_T-K_common), 0)`. Pour les trajectoires en knock‑out, le payoff est `0`.\n"
-                "- **Étape 5 – Actualisation et moyenne** : on actualise tous les payoffs par `exp(-r_common T_common)` puis on moyenne sur toutes les trajectoires.\n"
-                "- **Étape 6 – Construction de la heatmap barrière** : en répétant ces étapes pour différentes valeurs de `S0_common` ou `Hu`, on peut cartographier l’impact de la position de la barrière sur le prix, et visualiser le compromis entre protection et coût de la prime."
+                "- **Principe de base** : une option barrière est activée ou désactivée en fonction du franchissement d'un niveau de prix prédéfini (`Hu` ou `Hd`). La trajectoire du sous‑jacent entre `0` et `T` devient donc déterminante.\n"
+                "- **Knock-out** : l'option cesse d'exister dès que la barrière est touchée ; le droit d'exercer à l'échéance est alors perdu.\n"
+                "- **Knock-in** : à l’inverse, l’option ne \"prend naissance\" que si la barrière a été franchie au moins une fois avant l’échéance.\n"
+                "- **Up / Down** : on distingue les barrières **Up** (situées au‑dessus du spot initial) des barrières **Down** (situées en dessous), ce qui permet de modéliser des scénarios de protection ou de conditionnalité différentes.\n"
+                "- **Sensibilité au chemin** : ces produits sont très sensibles au maillage temporel : plus les pas sont grossiers, plus on risque de manquer des franchissements de barrière entre deux dates de simulation.\n"
+                "- **Objectif de l'onglet** : montrer comment le prix réagit aux combinaisons `S0`, `K`, `T`, `Hu/Hd`, `σ` et au type de barrière (in/out, up/down) via des simulations Monte Carlo."
+            ),
+        )
+        (
+            tab_barrier_up_out,
+            tab_barrier_down_out,
+            tab_barrier_up_in,
+            tab_barrier_down_in,
+        ) = st.tabs(["Up-and-out", "Down-and-out", "Up-and-in", "Down-and-in"])
+    
+        with tab_barrier_up_out:
+            st.subheader("Up-and-out")
+            render_method_explainer(
+                "⬆️ Méthode Monte Carlo – Up-and-out",
+                (
+                    "- **Étape 1 – Définition du niveau de barrière** : on fixe une barrière haute `Hu` strictement au‑dessus du spot `S0_common`. Le contrat stipule qu’en cas de franchissement de `Hu` avant `T`, l’option est annulée.\n"
+                    "- **Étape 2 – Simulation des trajectoires** : on simule des trajectoires `S_t` sous la mesure neutre au risque (GBM) en discrétisant `[0, T_common]` en `n_steps_up` pas de temps.\n"
+                    "- **Étape 3 – Détection du knock‑out** : pour chaque trajectoire, on initialise un indicateur `knocked_out = False`. À chaque pas, si `S_t ≥ Hu_up`, on met `knocked_out = True` et on peut considérer que la trajectoire ne contribuera plus au payoff.\n"
+                    "- **Étape 4 – Calcul du payoff terminal** : à la maturité, pour les trajectoires qui ne sont pas en knock‑out (`knocked_out = False`), on calcule le payoff européen standard `max(±(S_T-K_common), 0)`. Pour les trajectoires en knock‑out, le payoff est `0`.\n"
+                    "- **Étape 5 – Actualisation et moyenne** : on actualise tous les payoffs par `exp(-r_common T_common)` puis on moyenne sur toutes les trajectoires.\n"
+                    "- **Étape 6 – Construction de la heatmap barrière** : en répétant ces étapes pour différentes valeurs de `S0_common` ou `Hu`, on peut cartographier l’impact de la position de la barrière sur le prix, et visualiser le compromis entre protection et coût de la prime."
+                ),
+            )
+            render_inputs_explainer(
+                "🔧 Paramètres utilisés – Up-and-out",
+                (
+                    "- **\"S0 (spot)\"** : niveau de départ du sous‑jacent pour toutes les trajectoires simulées.\n"
+                    "- **\"K (strike)\"** : strike de l’option barrière (call ou put) utilisée pour le payoff si la barrière n’est jamais touchée.\n"
+                    "- **\"T (maturité, années)\"** : durée de vie de l’option, donc horizon de simulation.\n"
+                    "- **\"Taux sans risque r\"** et **\"Dividende continu d\"** : utilisés pour définir le drift neutre au risque et actualiser les payoffs.\n"
+                    "- **\"Volatilité σ\"** : volatilité constante supposée dans les trajectoires Monte Carlo.\n"
+                    "- **\"Call / Put\"** : choix du type d’option (call ou put) sur lequel la barrière s’applique.\n"
+                    "- **\"Barrière haute Hu\"** : niveau de prix au‑dessus du spot à partir duquel le knock‑out se déclenche.\n"
+                    "- **\"Trajectoires Monte Carlo\"** : nombre de chemins simulés pour estimer le prix.\n"
+                    "- **\"Pas de temps MC\"** : nombre de pas de temps par trajectoire, qui conditionne la finesse de la détection de la barrière."
+                ),
+            )
+            cpflag_barrier_up = option_label
+            cpflag_barrier_up_char = option_char
+            st.caption("Type fixé par l’onglet Call / Put en haut de page.")
+            Hu_up = st.number_input(
+                "Barrière haute Hu",
+                value=max(110.0, S0_common * 1.1),
+                min_value=S0_common,
+                key=_k("Hu_up"),
+            )
+            n_paths_up = st.number_input(
+                "Trajectoires Monte Carlo",
+                value=1000,
+                min_value=500,
+                step=500,
+                key=_k("n_paths_barrier_up"),
+                help="Nombre de trajectoires simulées pour la barrière Up-and-out.",
+            )
+            n_steps_up = st.number_input(
+                "Pas de temps MC",
+                value=200,
+                min_value=10,
+                key=_k("n_steps_barrier_up"),
+                help="Nombre de pas de temps pour suivre le franchissement de la barrière.",
+            )
+
+            if st.button("Calculer (Up-and-out)", key=_k("btn_barrier_up")):
+                with st.spinner("Simulation Monte Carlo en cours..."):
+                    price = _barrier_monte_carlo_price(
+                        option_type=cpflag_barrier_up_char,
+                        barrier_type="up",
+                        S0=S0_common,
+                        K=K_common,
+                        barrier=Hu_up,
+                        T=T_common,
+                        r=r_common,
+                        dividend=d_common,
+                        sigma=sigma_common,
+                        n_paths=int(n_paths_up),
+                        n_steps=int(n_steps_up),
+                    )
+                st.write(f"**Prix Monte Carlo barrière**: {price:.6f}")
+    
+            st.caption(f"Rappel : S0 = {S0_common:.4f}, Hu = {Hu_up:.4f}")
+    
+        with tab_barrier_down_out:
+            st.subheader("Down-and-out")
+            render_method_explainer(
+                "⬇️ Méthode Monte Carlo – Down-and-out",
+                (
+                    "- **Étape 1 – Positionnement de la barrière basse** : on choisit une barrière `Hd` située en dessous du spot `S0_common`. L’option disparaît si `S_t` tombe à ou sous ce niveau avant la maturité.\n"
+                    "- **Étape 2 – Simulation des trajectoires** : on simule de nombreuses trajectoires `S_t` sous la mesure neutre au risque jusqu’à `T_common`, en `n_steps_down` pas de temps.\n"
+                    "- **Étape 3 – Suivi du knock‑out** : pour chaque trajectoire, on surveille `S_t`. Dès que `S_t ≤ Hd_down`, on enregistre un état `knocked_out = True`.\n"
+                    "- **Étape 4 – Payoff terminal** : à l’échéance, si `knocked_out = False`, on calcule le payoff européen standard (call ou put selon `cpflag_barrier_down`). Si `knocked_out = True`, le payoff est nul.\n"
+                    "- **Étape 5 – Actualisation et moyennage** : on actualise les payoffs et on en prend la moyenne sur toutes les trajectoires pour obtenir le prix Monte Carlo.\n"
+                    "- **Étape 6 – Étude de sensibilité** : la répétition de ce calcul pour différents `Hd` et `T` permet d’analyser la probabilité de survie de l’option et l’amplitude de la réduction de prime liée à la barrière."
+                ),
+            )
+            render_inputs_explainer(
+                "🔧 Paramètres utilisés – Down-and-out",
+                (
+                    "- **\"S0 (spot)\"** : valeur initiale utilisée pour les trajectoires.\n"
+                    "- **\"K (strike)\"** : strike de l’option à barrière.\n"
+                    "- **\"T (maturité, années)\"** : horizon temporel de l’option.\n"
+                    "- **\"Taux sans risque r\"** et **\"Dividende continu d\"** : interviennent dans le drift neutre au risque et l’actualisation des payoffs.\n"
+                    "- **\"Volatilité σ\"** : volatilité constante supposée dans les simulations.\n"
+                    "- **\"Call / Put\"** : sélection du type d’option (call ou put).\n"
+                    "- **\"Barrière basse Hd\"** : niveau de prix en dessous du spot à partir duquel le knock‑out est activé.\n"
+                    "- **\"Trajectoires Monte Carlo\"** : nombre de chemins simulés.\n"
+                    "- **\"Pas de temps MC\"** : nombre de pas de simulation par trajectoire."
+                ),
+            )
+            cpflag_barrier_down = option_label
+            cpflag_barrier_down_char = option_char
+            st.caption("Type fixé par l’onglet Call / Put en haut de page.")
+            Hd_down = st.number_input(
+                "Barrière basse Hd",
+                value=max(1.0, S0_common * 0.8),
+                min_value=0.0001,
+                key=_k("Hd_down"),
+                help="Niveau de barrière basse en dessous du spot.",
+            )
+            n_paths_down = st.number_input(
+                "Trajectoires Monte Carlo",
+                value=1000,
+                min_value=500,
+                step=500,
+                key=_k("n_paths_barrier_down"),
+                help="Nombre de trajectoires simulées pour la barrière Down-and-out.",
+            )
+            n_steps_down = st.number_input(
+                "Pas de temps MC",
+                value=200,
+                min_value=10,
+                key=_k("n_steps_barrier_down"),
+                help="Nombre de pas de temps pour suivre la barrière.",
+            )
+
+            if st.button("Calculer (Down-and-out)", key=_k("btn_barrier_down")):
+                with st.spinner("Simulation Monte Carlo en cours..."):
+                    price = _barrier_monte_carlo_price(
+                        option_type=cpflag_barrier_down_char,
+                        barrier_type="down",
+                        S0=S0_common,
+                        K=K_common,
+                        barrier=Hd_down,
+                        T=T_common,
+                        r=r_common,
+                        dividend=d_common,
+                        sigma=sigma_common,
+                        n_paths=int(n_paths_down),
+                        n_steps=int(n_steps_down),
+                    )
+                st.write(f"**Prix Monte Carlo barrière**: {price:.6f}")
+            
+            st.caption(f"Rappel : S0 = {S0_common:.4f}, Hd = {Hd_down:.4f}")
+    
+        with tab_barrier_up_in:
+            st.subheader("Up-and-in")
+            render_method_explainer(
+                "⬆️ Méthode Monte Carlo – Up-and-in",
+                (
+                    "- **Étape 1 – Définition de la condition de knock‑in** : l’option n’a de valeur que si, à un moment entre `0` et `T_common`, le sous‑jacent a franchi la barrière haute `Hu`.\n"
+                    "- **Étape 2 – Simulation des trajectoires** : on simule un grand nombre de trajectoires `S_t` sous la mesure neutre au risque, sur `n_steps_up_in` pas de temps.\n"
+                    "- **Étape 3 – Suivi du knock‑in** : pour chaque trajectoire, on initialise un drapeau `knocked_in = False`. À chaque pas, si `S_t ≥ Hu_up_in`, on met `knocked_in = True`.\n"
+                    "- **Étape 4 – Évaluation à maturité** : à `T_common`, si `knocked_in = True`, on calcule le payoff européen standard (call ou put). Si `knocked_in = False`, le payoff est nul, car la barrière n’a jamais été touchée.\n"
+                    "- **Étape 5 – Actualisation et moyenne** : on actualise les payoffs et on en prend la moyenne pour obtenir le prix de l’option Up‑and‑in.\n"
+                    "- **Étape 6 – Lien avec l’Up‑and‑out** : théoriquement, pour un même niveau de barrière, la somme des prix Up‑and‑in et Up‑and‑out (avec même type d’option) s’approche du prix de l’option vanilla, ce qui fournit un contrôle de cohérence."
+                ),
+            )
+            render_inputs_explainer(
+                "🔧 Paramètres utilisés – Up-and-in",
+                (
+                    "- `S0_common` : spot initial.\n"
+                    "- `K_common` : strike de l’option conditionnelle.\n"
+                    "- `T_common` : maturité de l’option.\n"
+                    "- `r_common` : taux sans risque.\n"
+                    "- `d_common` : dividende continu.\n"
+                    "- `sigma_common` : volatilité utilisée pour les simulations.\n"
+                    "- `cpflag_barrier_up_in` : type d’option (call ou put) pour le scénario Up‑and‑in.\n"
+                    "- `Hu_up_in` : niveau de barrière haute déclenchant le knock‑in.\n"
+                    "- `n_paths_up_in` : nombre de trajectoires Monte Carlo.\n"
+                    "- `n_steps_up_in` : nombre de pas de temps par trajectoire.\n"
+                    "- `knock_in` : paramètre logique interne positionné à `True` pour spécifier la nature knock‑in du produit.\n"
+                    "- Variables internes : drapeau de knock‑in par trajectoire, facteur d’actualisation, générateur pseudo‑aléatoire."
+                ),
+            )
+            cpflag_barrier_up_in = option_label
+            cpflag_barrier_up_in_char = option_char
+            st.caption("Type fixé par l’onglet Call / Put en haut de page.")
+            Hu_up_in = st.number_input(
+                "Barrière haute Hu (Up-in)",
+                value=max(110.0, S0_common * 1.1),
+                min_value=S0_common,
+                key=_k("Hu_up_in"),
+                help="Niveau de barrière haute activant l’option Up-and-in.",
+            )
+            n_paths_up_in = st.number_input(
+                "Trajectoires Monte Carlo (Up-in)",
+                value=1000,
+                min_value=500,
+                step=500,
+                key=_k("n_paths_barrier_up_in"),
+                help="Nombre de trajectoires simulées pour l’Up-and-in.",
+            )
+            n_steps_up_in = st.number_input(
+                "Pas de temps MC (Up-in)",
+                value=200,
+                min_value=10,
+                key=_k("n_steps_barrier_up_in"),
+                help="Nombre de pas de temps par trajectoire pour l’Up-and-in.",
+            )
+
+            if st.button("Calculer (Up-and-in)", key=_k("btn_barrier_up_in")):
+                with st.spinner("Monte Carlo knock-in (Up)..."):
+                    price = _barrier_monte_carlo_price(
+                        option_type=cpflag_barrier_up_in_char,
+                        barrier_type="up",
+                        S0=S0_common,
+                        K=K_common,
+                        barrier=Hu_up_in,
+                        T=T_common,
+                        r=r_common,
+                        dividend=d_common,
+                        sigma=sigma_common,
+                        n_paths=int(n_paths_up_in),
+                        n_steps=int(n_steps_up_in),
+                        knock_in=True,
+                    )
+                st.write(f"**Prix Monte Carlo knock-in**: {price:.6f}")
+    
+            st.caption(f"Rappel : S0 = {S0_common:.4f}, Hu = {Hu_up_in:.4f}")
+    
+        with tab_barrier_down_in:
+            st.subheader("Down-and-in")
+            render_method_explainer(
+                "⬇️ Méthode Monte Carlo – Down-and-in",
+                (
+                    "- **Étape 1 – Condition de knock‑in** : l’option ne vaut quelque chose que si la barrière basse `Hd` a été touchée ou cassée au moins une fois avant `T_common`.\n"
+                    "- **Étape 2 – Simulation** : on simule des trajectoires du sous‑jacent et on surveille `S_t` à chaque pas.\n"
+                    "- **Étape 3 – Suivi du drapeau** : pour chaque trajectoire, on initialise `knocked_in = False`. Dès qu’un `S_t ≤ Hd_down_in` est observé, on met `knocked_in = True`.\n"
+                    "- **Étape 4 – Payoff terminal** : en fin de trajectoire, si `knocked_in = True`, on évalue le payoff européen (call ou put) ; sinon, le payoff est nul.\n"
+                    "- **Étape 5 – Actualisation et agrégation** : les payoffs sont actualisés, puis moyennés sur toutes les trajectoires pour obtenir le prix.\n"
+                    "- **Étape 6 – Sensibilité au niveau de barrière** : plus `Hd` est éloignée sous `S0_common`, moins la barrière a de chances d’être touchée et plus la prime du produit baisse, ce qui se visualise directement dans les résultats numériquement obtenus."
+                ),
+            )
+            render_inputs_explainer(
+                "🔧 Paramètres utilisés – Down-and-in",
+                (
+                    "- **\"S0 (spot)\"** : spot de départ des trajectoires.\n"
+                    "- **\"K (strike)\"** : strike de l’option Down‑and‑in.\n"
+                    "- **\"T (maturité, années)\"** : horizon de l’option.\n"
+                    "- **\"Taux sans risque r\"** et **\"Dividende continu d\"** : paramètres de taux utilisés dans la simulation et l’actualisation.\n"
+                    "- **\"Volatilité σ\"** : volatilité utilisée pour la dynamique Monte Carlo.\n"
+                    "- **\"Call / Put\"** : choix du type d’option.\n"
+                    "- **\"Barrière basse Hd (Down-in)\"** : niveau de prix sous lequel la barrière est considérée comme touchée.\n"
+                    "- **\"Trajectoires Monte Carlo (Down-in)\"** : nombre de trajectoires simulées.\n"
+                    "- **\"Pas de temps MC (Down-in)\"** : nombre de pas de temps par trajectoire."
+                ),
+            )
+            cpflag_barrier_down_in = option_label
+            cpflag_barrier_down_in_char = option_char
+            st.caption("Type fixé par l’onglet Call / Put en haut de page.")
+            Hd_down_in = st.number_input(
+                "Barrière basse Hd (Down-in)",
+                value=max(1.0, S0_common * 0.8),
+                min_value=0.0001,
+                key=_k("Hd_down_in"),
+            )
+            n_paths_down_in = st.number_input(
+                "Trajectoires Monte Carlo (Down-in)",
+                value=1000,
+                min_value=500,
+                step=500,
+                key=_k("n_paths_barrier_down_in"),
+            )
+            n_steps_down_in = st.number_input(
+                "Pas de temps MC (Down-in)",
+                value=200,
+                min_value=10,
+                key=_k("n_steps_barrier_down_in"),
+            )
+
+            if st.button("Calculer (Down-and-in)", key=_k("btn_barrier_down_in")):
+                with st.spinner("Monte Carlo knock-in (Down)..."):
+                    price = _barrier_monte_carlo_price(
+                        option_type=cpflag_barrier_down_in_char,
+                        barrier_type="down",
+                        S0=S0_common,
+                        K=K_common,
+                        barrier=Hd_down_in,
+                        T=T_common,
+                        r=r_common,
+                        dividend=d_common,
+                        sigma=sigma_common,
+                        n_paths=int(n_paths_down_in),
+                        n_steps=int(n_steps_down_in),
+                        knock_in=True,
+                    )
+                st.write(f"**Prix Monte Carlo knock-in**: {price:.6f}")
+    
+    
+    with tab_bermudan:
+        st.header("Option bermudéenne")
+        render_unlock_sidebar_button("tab_bermudan", "🔓 Réactiver T (onglet Bermuda)")
+        render_general_definition_explainer(
+            "🏝️ Comprendre les options bermudéennes",
+            (
+                "- **Positionnement** : une option bermudéenne se situe entre l’option européenne (exercice uniquement à l’échéance) et l’option américaine (exercice possible en continu). Ici, l’exercice est possible sur un ensemble discret de dates prédéfinies.\n"
+                "- **Calendrier d'exercice** : l’investisseur dispose d’une série de dates Bermudes (par exemple mensuelles ou trimestrielles) où il peut choisir d’exercer l’option. En dehors de ces dates, l’option reste inerte.\n"
+                "- **Impact sur le prix** : plus on multiplie les dates possibles d’exercice, plus le produit se rapproche d’une option américaine en termes de flexibilité et de valorisation.\n"
+                "- **Usage pratique** : ces produits apparaissent souvent dans les produits structurés et les options exotiques de marché de taux ou de change, où l’on souhaite offrir une flexibilité encadrée.\n"
+                "- **Objectif de l’onglet** : proposer une valorisation cohérente de ces options à l’aide d’un schéma PDE de type Crank–Nicolson adapté au cadre Bermudéen."
+            ),
+        )
+        cpflag_bmd = option_label
+        cpflag_bmd_char = option_char
+        st.caption("Type fixé par l’onglet Call / Put en haut de page.")
+        n_ex_dates_bmd = st.number_input(
+            "Nombre de dates d'exercice Bermude",
+            value=6,
+            min_value=2,
+            help="Les dates sont réparties uniformément sur la grille PDE (incluant l'échéance).",
+            key=_k("n_ex_dates_bmd"),
+        )
+    
+        render_method_explainer(
+            "🧮 Méthode PDE Crank–Nicolson pour options bermudéennes",
+            (
+                "- **Étape 1 – Formulation PDE** : on écrit l’équation de Black–Scholes pour le prix `V(t, S)` en fonction du temps et du spot, en supposant volatilité constante `σ_common`, taux `r_common` et dividende `d_common`.\n"
+                "- **Étape 2 – Changement de variable en log‑prix** : pour des raisons numériques, on travaille en log‑spot `x = ln(S/S0)` et on construit une grille spatiale régulière en `x` centrée autour de `S0_common`.\n"
+                "- **Étape 3 – Discrétisation Crank–Nicolson** : la PDE est discrétisée dans le temps et l’espace en combinant une approche implicite et explicite (50 %–50 %). Cela conduit à des systèmes linéaires tridiagonaux à résoudre à chaque pas de temps.\n"
+                "- **Étape 4 – Condition terminale** : à la maturité `T_common`, on initialise `V(T, S)` au payoff européen standard (call ou put) pour toutes les valeurs de `S` sur la grille.\n"
+                "- **Étape 5 – Intégration temporelle backward** : on remonte le temps pas à pas en résolvant, à chaque pas, un système linéaire obtenu à partir des matrices `A` et `B` du schéma Crank–Nicolson. On applique en parallèle les conditions aux bornes (comportement pour `S → 0` et `S → +∞`).\n"
+                "- **Étape 6 – Traitement des dates Bermudes** : à chaque date d’exercice autorisée, on remplace la valeur obtenue par la PDE par `max(V(t, S), payoff(S))`, de façon à imposer la possibilité d’exercice anticipé discret.\n"
+                "- **Étape 7 – Lecture de la solution** : une fois revenue au temps initial, on lit la valeur de `V(0, S0_common)` sur la grille pour obtenir le prix. Les grecs `Delta`, `Gamma` et `Theta` sont ensuite calculés par différences finies à partir des valeurs de la grille dans un voisinage de `S0_common`."
             ),
         )
         render_inputs_explainer(
-            "🔧 Paramètres utilisés – Up-and-out",
+            "🔧 Paramètres utilisés – Bermuda (PDE)",
             (
-                "- **\"S0 (spot)\"** : niveau de départ du sous‑jacent pour toutes les trajectoires simulées.\n"
-                "- **\"K (strike)\"** : strike de l’option barrière (call ou put) utilisée pour le payoff si la barrière n’est jamais touchée.\n"
-                "- **\"T (maturité, années)\"** : durée de vie de l’option, donc horizon de simulation.\n"
-                "- **\"Taux sans risque r\"** et **\"Dividende continu d\"** : utilisés pour définir le drift neutre au risque et actualiser les payoffs.\n"
-                "- **\"Volatilité σ\"** : volatilité constante supposée dans les trajectoires Monte Carlo.\n"
-                "- **\"Call / Put\"** : choix du type d’option (call ou put) sur lequel la barrière s’applique.\n"
-                "- **\"Barrière haute Hu\"** : niveau de prix au‑dessus du spot à partir duquel le knock‑out se déclenche.\n"
-                "- **\"Trajectoires Monte Carlo\"** : nombre de chemins simulés pour estimer le prix.\n"
-                "- **\"Pas de temps MC\"** : nombre de pas de temps par trajectoire, qui conditionne la finesse de la détection de la barrière."
+                "- **\"S0 (spot)\"** : point de départ sur l’axe des prix pour lequel on lit le résultat de la PDE.\n"
+                "- **\"K (strike)\"** : strike de l’option bermudéenne.\n"
+                "- **\"T (maturité, années)\"** : échéance finale de l’option.\n"
+                "- **\"Volatilité σ\"** : volatilité constante utilisée dans l’équation de Black–Scholes.\n"
+                "- **\"Taux sans risque r\"** et **\"Dividende continu d\"** : paramètres de taux du sous‑jacent.\n"
+                "- **\"Call / Put (bermuda)\"** : choix du type d’option.\n"
+                "- **\"Nombre de dates d'exercice Bermude\"** : nombre de dates intermédiaires où l’exercice anticipé est autorisé (en plus de l’échéance)."
             ),
         )
-        cpflag_barrier_up = st.selectbox(
-            "Call / Put",
-            ["Call", "Put"],
-            key="cpflag_barrier_up",
-            help="Choix du type d’option barrière (call ou put).",
-        )
-        cpflag_barrier_up_char = "c" if cpflag_barrier_up == "Call" else "p"
-        Hu_up = st.number_input("Barrière haute Hu", value=max(110.0, S0_common * 1.1), min_value=S0_common, key="Hu_up")
-        n_paths_up = st.number_input(
-            "Trajectoires Monte Carlo",
-            value=1000,
-            min_value=500,
-            step=500,
-            key="n_paths_barrier_up",
-            help="Nombre de trajectoires simulées pour la barrière Up-and-out.",
-        )
-        n_steps_up = st.number_input(
-            "Pas de temps MC",
-            value=200,
-            min_value=10,
-            key="n_steps_barrier_up",
-            help="Nombre de pas de temps pour suivre le franchissement de la barrière.",
-        )
-
-        if st.button("Calculer (Up-and-out)", key="btn_barrier_up"):
-            with st.spinner("Simulation Monte Carlo en cours..."):
-                price = _barrier_monte_carlo_price(
-                    option_type=cpflag_barrier_up_char,
-                    barrier_type="up",
-                    S0=S0_common,
-                    K=K_common,
-                    barrier=Hu_up,
-                    T=T_common,
-                    r=r_common,
-                    dividend=d_common,
-                    sigma=sigma_common,
-                    n_paths=int(n_paths_up),
-                    n_steps=int(n_steps_up),
-                )
-            st.write(f"**Prix Monte Carlo barrière**: {price:.6f}")
-
-        st.caption(f"Rappel : S0 = {S0_common:.4f}, Hu = {Hu_up:.4f}")
-
-    with tab_barrier_down_out:
-        st.subheader("Down-and-out")
-        render_method_explainer(
-            "⬇️ Méthode Monte Carlo – Down-and-out",
+    
+        if st.button(
+            f"Calculer le prix Bermuda (PDE) "
+            f"(S0={S0_common:.2f}, K={K_common:.2f}, T={T_common:.2f}, r={r_common:.2f}, d={d_common:.2f}, σ={sigma_common:.2f})",
+            key=_k("btn_bmd_cn"),
+        ):
+            model_bmd = CrankNicolsonBS(
+                Typeflag="Bmd",
+                cpflag=cpflag_bmd_char,
+                S0=S0_common,
+                K=K_common,
+                T=T_common,
+                vol=sigma_common,
+                r=r_common,
+                d=d_common,
+                n_exercise_dates=int(n_ex_dates_bmd),
+            )
+            price_bmd, delta_bmd, gamma_bmd, theta_bmd = model_bmd.CN_option_info()
+            st.write(f"**Prix**: {price_bmd:.4f}")
+            st.write(f"**Delta**: {delta_bmd:.4f}")
+            st.write(f"**Gamma**: {gamma_bmd:.4f}")
+            st.write(f"**Theta**: {theta_bmd:.4f}")
+    
+    
+    with tab_basket:
+        st.header("Options basket")
+        render_general_definition_explainer(
+            "🧺 Comprendre les options basket",
             (
-                "- **Étape 1 – Positionnement de la barrière basse** : on choisit une barrière `Hd` située en dessous du spot `S0_common`. L’option disparaît si `S_t` tombe à ou sous ce niveau avant la maturité.\n"
-                "- **Étape 2 – Simulation des trajectoires** : on simule de nombreuses trajectoires `S_t` sous la mesure neutre au risque jusqu’à `T_common`, en `n_steps_down` pas de temps.\n"
-                "- **Étape 3 – Suivi du knock‑out** : pour chaque trajectoire, on surveille `S_t`. Dès que `S_t ≤ Hd_down`, on enregistre un état `knocked_out = True`.\n"
-                "- **Étape 4 – Payoff terminal** : à l’échéance, si `knocked_out = False`, on calcule le payoff européen standard (call ou put selon `cpflag_barrier_down`). Si `knocked_out = True`, le payoff est nul.\n"
-                "- **Étape 5 – Actualisation et moyennage** : on actualise les payoffs et on en prend la moyenne sur toutes les trajectoires pour obtenir le prix Monte Carlo.\n"
-                "- **Étape 6 – Étude de sensibilité** : la répétition de ce calcul pour différents `Hd` et `T` permet d’analyser la probabilité de survie de l’option et l’amplitude de la réduction de prime liée à la barrière."
+                "- **Définition** : une option basket porte sur un panier de plusieurs sous‑jacents (actions, indices, etc.), typiquement via une combinaison pondérée de leurs prix.\n"
+                "- **Mécanisme** : le payoff dépend de la valeur de ce panier (par exemple une moyenne pondérée des spots) à l’échéance ou selon une trajectoire donnée.\n"
+                "- **Intérêt** : ces produits permettent de mutualiser le risque entre plusieurs actifs et de construire des vues relatives (sur‑/sous‑performance de certains composants du panier).\n"
+                "- **Enjeux de modélisation** : la corrélation entre les sous‑jacents et la structure de la volatilité jouent un rôle central dans la forme de la distribution du panier.\n"
+                "- **Objectif de cet onglet** : explorer, à travers une surface de prix et éventuellement une calibration, l’impact des paramètres de marché et des pondérations sur le prix du basket."
+            ),
+        )
+        render_method_explainer(
+            "🧮 Méthode utilisée dans le module Basket",
+            (
+                "- **Étape 1 – Chargement des historiques** : on charge les séries de prix de clôture des actifs du panier (ticker par ticker) à partir de fichiers CSV, en s’assurant d’avoir une période historique commune.\n"
+                "- **Étape 2 – Construction du dataset** : à partir de ces séries, on construit un jeu de données où chaque ligne correspond à un scénario de marché (niveaux de prix, volatilités implicites, corrélations, strike, maturité, etc.) et à un prix d’option panier associé (label).\n"
+                "- **Étape 3 – Séparation train / test** : le dataset est découpé selon `split_ratio` en un ensemble d’entraînement et un ensemble de test, afin de pouvoir évaluer la capacité du modèle à généraliser.\n"
+                "- **Étape 4 – Entraînement du réseau de neurones** : un modèle `build_model_nn` est instancié avec une architecture adaptée (couches denses, activations non linéaires). On l’entraîne pendant `epochs` itérations pour minimiser une fonction de perte de type MSE entre prix prédits et prix \"théoriques\" (issus de BSM multi‑actifs ou Monte Carlo).\n"
+                "- **Étape 5 – Suivi de l’apprentissage** : pendant l’entraînement, on suit l’évolution de la perte sur le jeu d’entraînement et de validation (MSE train / val) pour détecter surapprentissage ou sous‑apprentissage.\n"
+                "- **Étape 6 – Construction des heatmaps de prix** : une fois le modèle entraîné, on le met en production sur une grille de paramètres (par exemple `S` et `K` autour de valeurs communes) pour produire une heatmap des prix d’option basket.\n"
+                "- **Étape 7 – Construction de la surface de volatilité implicite** : en inversant éventuellement les prix du modèle sur un ensemble de paramètres, on peut reconstruire une surface de volatilité implicite associée au panier et la comparer aux données de marché.\n"
+                "- **Étape 8 – Analyse des résultats** : les heatmaps et les courbes MSE permettent de juger de la qualité de l’approximation et de l’intérêt du modèle pour un pricing rapide en temps réel."
             ),
         )
         render_inputs_explainer(
-            "🔧 Paramètres utilisés – Down-and-out",
+            "🔧 Paramètres utilisés – Basket",
             (
-                "- **\"S0 (spot)\"** : valeur initiale utilisée pour les trajectoires.\n"
-                "- **\"K (strike)\"** : strike de l’option à barrière.\n"
-                "- **\"T (maturité, années)\"** : horizon temporel de l’option.\n"
-                "- **\"Taux sans risque r\"** et **\"Dividende continu d\"** : interviennent dans le drift neutre au risque et l’actualisation des payoffs.\n"
-                "- **\"Volatilité σ\"** : volatilité constante supposée dans les simulations.\n"
-                "- **\"Call / Put\"** : sélection du type d’option (call ou put).\n"
-                "- **\"Barrière basse Hd\"** : niveau de prix en dessous du spot à partir duquel le knock‑out est activé.\n"
-                "- **\"Trajectoires Monte Carlo\"** : nombre de chemins simulés.\n"
-                "- **\"Pas de temps MC\"** : nombre de pas de simulation par trajectoire."
+                "- **\"S0 (spot)\"** : niveau de spot de référence utilisé pour centrer certaines grilles de prix du panier.\n"
+                "- **\"K (strike)\"** : strike de référence du basket, autour duquel on définit les domaines de strikes.\n"
+                "- **\"T (maturité, années)\"** : maturité de référence utilisée pour les surfaces de prix ou de volatilité.\n"
+                "- **\"Taux sans risque r\"** : taux utilisé pour actualiser les flux dans les modèles internes.\n"
+                "- **Sélection des actifs du panier** : zone de texte / boutons permettant de choisir les tickers qui composeront le basket.\n"
+                "- **\"Train ratio\"** : pourcentage du dataset historique utilisé pour l’apprentissage (le reste servant au test).\n"
+                "- **\"Epochs d'entraînement\"** : nombre de passes sur le dataset lors de l’entraînement du réseau de neurones."
             ),
         )
-        cpflag_barrier_down = st.selectbox(
-            "Call / Put",
-            ["Call", "Put"],
-            key="cpflag_barrier_down",
-            help="Choix du type d’option barrière (call ou put).",
+        ui_basket_surface(
+            spot_common=common_spot_value,
+            maturity_common=common_maturity_value,
+            rate_common=common_rate_value,
+            strike_common=common_strike_value,
         )
-        cpflag_barrier_down_char = "c" if cpflag_barrier_down == "Call" else "p"
-        Hd_down = st.number_input(
-            "Barrière basse Hd",
-            value=max(1.0, S0_common * 0.8),
-            min_value=0.0001,
-            key="Hd_down",
-            help="Niveau de barrière basse en dessous du spot.",
-        )
-        n_paths_down = st.number_input(
-            "Trajectoires Monte Carlo",
-            value=1000,
-            min_value=500,
-            step=500,
-            key="n_paths_barrier_down",
-            help="Nombre de trajectoires simulées pour la barrière Down-and-out.",
-        )
-        n_steps_down = st.number_input(
-            "Pas de temps MC",
-            value=200,
-            min_value=10,
-            key="n_steps_barrier_down",
-            help="Nombre de pas de temps pour suivre la barrière.",
+    
+    
+    with tab_asian:
+        ui_asian_options(
+            spot_default=common_spot_value,
+            sigma_common=common_sigma_value,
+            maturity_common=common_maturity_value,
+            strike_common=common_strike_value,
+            rate_common=common_rate_value,
         )
 
-        if st.button("Calculer (Down-and-out)", key="btn_barrier_down"):
-            with st.spinner("Simulation Monte Carlo en cours..."):
-                price = _barrier_monte_carlo_price(
-                    option_type=cpflag_barrier_down_char,
-                    barrier_type="down",
-                    S0=S0_common,
-                    K=K_common,
-                    barrier=Hd_down,
-                    T=T_common,
-                    r=r_common,
-                    dividend=d_common,
-                    sigma=sigma_common,
-                    n_paths=int(n_paths_down),
-                    n_steps=int(n_steps_down),
-                )
-            st.write(f"**Prix Monte Carlo barrière**: {price:.6f}")
-        
-        st.caption(f"Rappel : S0 = {S0_common:.4f}, Hd = {Hd_down:.4f}")
-
-    with tab_barrier_up_in:
-        st.subheader("Up-and-in")
-        render_method_explainer(
-            "⬆️ Méthode Monte Carlo – Up-and-in",
-            (
-                "- **Étape 1 – Définition de la condition de knock‑in** : l’option n’a de valeur que si, à un moment entre `0` et `T_common`, le sous‑jacent a franchi la barrière haute `Hu`.\n"
-                "- **Étape 2 – Simulation des trajectoires** : on simule un grand nombre de trajectoires `S_t` sous la mesure neutre au risque, sur `n_steps_up_in` pas de temps.\n"
-                "- **Étape 3 – Suivi du knock‑in** : pour chaque trajectoire, on initialise un drapeau `knocked_in = False`. À chaque pas, si `S_t ≥ Hu_up_in`, on met `knocked_in = True`.\n"
-                "- **Étape 4 – Évaluation à maturité** : à `T_common`, si `knocked_in = True`, on calcule le payoff européen standard (call ou put). Si `knocked_in = False`, le payoff est nul, car la barrière n’a jamais été touchée.\n"
-                "- **Étape 5 – Actualisation et moyenne** : on actualise les payoffs et on en prend la moyenne pour obtenir le prix de l’option Up‑and‑in.\n"
-                "- **Étape 6 – Lien avec l’Up‑and‑out** : théoriquement, pour un même niveau de barrière, la somme des prix Up‑and‑in et Up‑and‑out (avec même type d’option) s’approche du prix de l’option vanilla, ce qui fournit un contrôle de cohérence."
-            ),
-        )
-        render_inputs_explainer(
-            "🔧 Paramètres utilisés – Up-and-in",
-            (
-                "- `S0_common` : spot initial.\n"
-                "- `K_common` : strike de l’option conditionnelle.\n"
-                "- `T_common` : maturité de l’option.\n"
-                "- `r_common` : taux sans risque.\n"
-                "- `d_common` : dividende continu.\n"
-                "- `sigma_common` : volatilité utilisée pour les simulations.\n"
-                "- `cpflag_barrier_up_in` : type d’option (call ou put) pour le scénario Up‑and‑in.\n"
-                "- `Hu_up_in` : niveau de barrière haute déclenchant le knock‑in.\n"
-                "- `n_paths_up_in` : nombre de trajectoires Monte Carlo.\n"
-                "- `n_steps_up_in` : nombre de pas de temps par trajectoire.\n"
-                "- `knock_in` : paramètre logique interne positionné à `True` pour spécifier la nature knock‑in du produit.\n"
-                "- Variables internes : drapeau de knock‑in par trajectoire, facteur d’actualisation, générateur pseudo‑aléatoire."
-            ),
-        )
-        cpflag_barrier_up_in = st.selectbox(
-            "Call / Put",
-            ["Call", "Put"],
-            key="cpflag_barrier_up_in",
-            help="Type d’option (call ou put) pour le scénario Up-and-in.",
-        )
-        cpflag_barrier_up_in_char = "c" if cpflag_barrier_up_in == "Call" else "p"
-        Hu_up_in = st.number_input(
-            "Barrière haute Hu (Up-in)",
-            value=max(110.0, S0_common * 1.1),
-            min_value=S0_common,
-            key="Hu_up_in",
-            help="Niveau de barrière haute activant l’option Up-and-in.",
-        )
-        n_paths_up_in = st.number_input(
-            "Trajectoires Monte Carlo (Up-in)",
-            value=1000,
-            min_value=500,
-            step=500,
-            key="n_paths_barrier_up_in",
-            help="Nombre de trajectoires simulées pour l’Up-and-in.",
-        )
-        n_steps_up_in = st.number_input(
-            "Pas de temps MC (Up-in)",
-            value=200,
-            min_value=10,
-            key="n_steps_barrier_up_in",
-            help="Nombre de pas de temps par trajectoire pour l’Up-and-in.",
-        )
-
-        if st.button("Calculer (Up-and-in)", key="btn_barrier_up_in"):
-            with st.spinner("Monte Carlo knock-in (Up)..."):
-                price = _barrier_monte_carlo_price(
-                    option_type=cpflag_barrier_up_in_char,
-                    barrier_type="up",
-                    S0=S0_common,
-                    K=K_common,
-                    barrier=Hu_up_in,
-                    T=T_common,
-                    r=r_common,
-                    dividend=d_common,
-                    sigma=sigma_common,
-                    n_paths=int(n_paths_up_in),
-                    n_steps=int(n_steps_up_in),
-                    knock_in=True,
-                )
-            st.write(f"**Prix Monte Carlo knock-in**: {price:.6f}")
-
-        st.caption(f"Rappel : S0 = {S0_common:.4f}, Hu = {Hu_up_in:.4f}")
-
-    with tab_barrier_down_in:
-        st.subheader("Down-and-in")
-        render_method_explainer(
-            "⬇️ Méthode Monte Carlo – Down-and-in",
-            (
-                "- **Étape 1 – Condition de knock‑in** : l’option ne vaut quelque chose que si la barrière basse `Hd` a été touchée ou cassée au moins une fois avant `T_common`.\n"
-                "- **Étape 2 – Simulation** : on simule des trajectoires du sous‑jacent et on surveille `S_t` à chaque pas.\n"
-                "- **Étape 3 – Suivi du drapeau** : pour chaque trajectoire, on initialise `knocked_in = False`. Dès qu’un `S_t ≤ Hd_down_in` est observé, on met `knocked_in = True`.\n"
-                "- **Étape 4 – Payoff terminal** : en fin de trajectoire, si `knocked_in = True`, on évalue le payoff européen (call ou put) ; sinon, le payoff est nul.\n"
-                "- **Étape 5 – Actualisation et agrégation** : les payoffs sont actualisés, puis moyennés sur toutes les trajectoires pour obtenir le prix.\n"
-                "- **Étape 6 – Sensibilité au niveau de barrière** : plus `Hd` est éloignée sous `S0_common`, moins la barrière a de chances d’être touchée et plus la prime du produit baisse, ce qui se visualise directement dans les résultats numériquement obtenus."
-            ),
-        )
-        render_inputs_explainer(
-            "🔧 Paramètres utilisés – Down-and-in",
-            (
-                "- **\"S0 (spot)\"** : spot de départ des trajectoires.\n"
-                "- **\"K (strike)\"** : strike de l’option Down‑and‑in.\n"
-                "- **\"T (maturité, années)\"** : horizon de l’option.\n"
-                "- **\"Taux sans risque r\"** et **\"Dividende continu d\"** : paramètres de taux utilisés dans la simulation et l’actualisation.\n"
-                "- **\"Volatilité σ\"** : volatilité utilisée pour la dynamique Monte Carlo.\n"
-                "- **\"Call / Put\"** : choix du type d’option.\n"
-                "- **\"Barrière basse Hd (Down-in)\"** : niveau de prix sous lequel la barrière est considérée comme touchée.\n"
-                "- **\"Trajectoires Monte Carlo (Down-in)\"** : nombre de trajectoires simulées.\n"
-                "- **\"Pas de temps MC (Down-in)\"** : nombre de pas de temps par trajectoire."
-            ),
-        )
-        cpflag_barrier_down_in = st.selectbox("Call / Put", ["Call", "Put"], key="cpflag_barrier_down_in")
-        cpflag_barrier_down_in_char = "c" if cpflag_barrier_down_in == "Call" else "p"
-        Hd_down_in = st.number_input(
-            "Barrière basse Hd (Down-in)", value=max(1.0, S0_common * 0.8), min_value=0.0001, key="Hd_down_in"
-        )
-        n_paths_down_in = st.number_input(
-            "Trajectoires Monte Carlo (Down-in)",
-            value=1000,
-            min_value=500,
-            step=500,
-            key="n_paths_barrier_down_in",
-        )
-        n_steps_down_in = st.number_input(
-            "Pas de temps MC (Down-in)", value=200, min_value=10, key="n_steps_barrier_down_in"
-        )
-
-        if st.button("Calculer (Down-and-in)", key="btn_barrier_down_in"):
-            with st.spinner("Monte Carlo knock-in (Down)..."):
-                price = _barrier_monte_carlo_price(
-                    option_type=cpflag_barrier_down_in_char,
-                    barrier_type="down",
-                    S0=S0_common,
-                    K=K_common,
-                    barrier=Hd_down_in,
-                    T=T_common,
-                    r=r_common,
-                    dividend=d_common,
-                    sigma=sigma_common,
-                    n_paths=int(n_paths_down_in),
-                    n_steps=int(n_steps_down_in),
-                    knock_in=True,
-                )
-            st.write(f"**Prix Monte Carlo knock-in**: {price:.6f}")
-
-
-with tab_bermudan:
-    st.header("Option bermudéenne")
-    render_unlock_sidebar_button("tab_bermudan", "🔓 Réactiver T (onglet Bermuda)")
-    render_general_definition_explainer(
-        "🏝️ Comprendre les options bermudéennes",
-        (
-            "- **Positionnement** : une option bermudéenne se situe entre l’option européenne (exercice uniquement à l’échéance) et l’option américaine (exercice possible en continu). Ici, l’exercice est possible sur un ensemble discret de dates prédéfinies.\n"
-            "- **Calendrier d'exercice** : l’investisseur dispose d’une série de dates Bermudes (par exemple mensuelles ou trimestrielles) où il peut choisir d’exercer l’option. En dehors de ces dates, l’option reste inerte.\n"
-            "- **Impact sur le prix** : plus on multiplie les dates possibles d’exercice, plus le produit se rapproche d’une option américaine en termes de flexibilité et de valorisation.\n"
-            "- **Usage pratique** : ces produits apparaissent souvent dans les produits structurés et les options exotiques de marché de taux ou de change, où l’on souhaite offrir une flexibilité encadrée.\n"
-            "- **Objectif de l’onglet** : proposer une valorisation cohérente de ces options à l’aide d’un schéma PDE de type Crank–Nicolson adapté au cadre Bermudéen."
-        ),
-    )
-    cpflag_bmd = st.selectbox("Call / Put (bermuda)", ["Call", "Put"], key="cpflag_bmd")
-    cpflag_bmd_char = "c" if cpflag_bmd == "Call" else "p"
-    n_ex_dates_bmd = st.number_input(
-        "Nombre de dates d'exercice Bermude",
-        value=6,
-        min_value=2,
-        help="Les dates sont réparties uniformément sur la grille PDE (incluant l'échéance).",
-        key="n_ex_dates_bmd",
-    )
-
-    render_method_explainer(
-        "🧮 Méthode PDE Crank–Nicolson pour options bermudéennes",
-        (
-            "- **Étape 1 – Formulation PDE** : on écrit l’équation de Black–Scholes pour le prix `V(t, S)` en fonction du temps et du spot, en supposant volatilité constante `σ_common`, taux `r_common` et dividende `d_common`.\n"
-            "- **Étape 2 – Changement de variable en log‑prix** : pour des raisons numériques, on travaille en log‑spot `x = ln(S/S0)` et on construit une grille spatiale régulière en `x` centrée autour de `S0_common`.\n"
-            "- **Étape 3 – Discrétisation Crank–Nicolson** : la PDE est discrétisée dans le temps et l’espace en combinant une approche implicite et explicite (50 %–50 %). Cela conduit à des systèmes linéaires tridiagonaux à résoudre à chaque pas de temps.\n"
-            "- **Étape 4 – Condition terminale** : à la maturité `T_common`, on initialise `V(T, S)` au payoff européen standard (call ou put) pour toutes les valeurs de `S` sur la grille.\n"
-            "- **Étape 5 – Intégration temporelle backward** : on remonte le temps pas à pas en résolvant, à chaque pas, un système linéaire obtenu à partir des matrices `A` et `B` du schéma Crank–Nicolson. On applique en parallèle les conditions aux bornes (comportement pour `S → 0` et `S → +∞`).\n"
-            "- **Étape 6 – Traitement des dates Bermudes** : à chaque date d’exercice autorisée, on remplace la valeur obtenue par la PDE par `max(V(t, S), payoff(S))`, de façon à imposer la possibilité d’exercice anticipé discret.\n"
-            "- **Étape 7 – Lecture de la solution** : une fois revenue au temps initial, on lit la valeur de `V(0, S0_common)` sur la grille pour obtenir le prix. Les grecs `Delta`, `Gamma` et `Theta` sont ensuite calculés par différences finies à partir des valeurs de la grille dans un voisinage de `S0_common`."
-        ),
-    )
-    render_inputs_explainer(
-        "🔧 Paramètres utilisés – Bermuda (PDE)",
-        (
-            "- **\"S0 (spot)\"** : point de départ sur l’axe des prix pour lequel on lit le résultat de la PDE.\n"
-            "- **\"K (strike)\"** : strike de l’option bermudéenne.\n"
-            "- **\"T (maturité, années)\"** : échéance finale de l’option.\n"
-            "- **\"Volatilité σ\"** : volatilité constante utilisée dans l’équation de Black–Scholes.\n"
-            "- **\"Taux sans risque r\"** et **\"Dividende continu d\"** : paramètres de taux du sous‑jacent.\n"
-            "- **\"Call / Put (bermuda)\"** : choix du type d’option.\n"
-            "- **\"Nombre de dates d'exercice Bermude\"** : nombre de dates intermédiaires où l’exercice anticipé est autorisé (en plus de l’échéance)."
-        ),
-    )
-
-    if st.button(
-        f"Calculer le prix Bermuda (PDE) "
-        f"(S0={S0_common:.2f}, K={K_common:.2f}, T={T_common:.2f}, r={r_common:.2f}, d={d_common:.2f}, σ={sigma_common:.2f})",
-        key="btn_bmd_cn",
-    ):
-        model_bmd = CrankNicolsonBS(
-            Typeflag="Bmd",
-            cpflag=cpflag_bmd_char,
-            S0=S0_common,
-            K=K_common,
-            T=T_common,
-            vol=sigma_common,
-            r=r_common,
-            d=d_common,
-            n_exercise_dates=int(n_ex_dates_bmd),
-        )
-        price_bmd, delta_bmd, gamma_bmd, theta_bmd = model_bmd.CN_option_info()
-        st.write(f"**Prix**: {price_bmd:.4f}")
-        st.write(f"**Delta**: {delta_bmd:.4f}")
-        st.write(f"**Gamma**: {gamma_bmd:.4f}")
-        st.write(f"**Theta**: {theta_bmd:.4f}")
-
-
-with tab_basket:
-    st.header("Options basket")
-    render_general_definition_explainer(
-        "🧺 Comprendre les options basket",
-        (
-            "- **Définition** : une option basket porte sur un panier de plusieurs sous‑jacents (actions, indices, etc.), typiquement via une combinaison pondérée de leurs prix.\n"
-            "- **Mécanisme** : le payoff dépend de la valeur de ce panier (par exemple une moyenne pondérée des spots) à l’échéance ou selon une trajectoire donnée.\n"
-            "- **Intérêt** : ces produits permettent de mutualiser le risque entre plusieurs actifs et de construire des vues relatives (sur‑/sous‑performance de certains composants du panier).\n"
-            "- **Enjeux de modélisation** : la corrélation entre les sous‑jacents et la structure de la volatilité jouent un rôle central dans la forme de la distribution du panier.\n"
-            "- **Objectif de cet onglet** : explorer, à travers une surface de prix et éventuellement une calibration, l’impact des paramètres de marché et des pondérations sur le prix du basket."
-        ),
-    )
-    render_method_explainer(
-        "🧮 Méthode utilisée dans le module Basket",
-        (
-            "- **Étape 1 – Chargement des historiques** : on charge les séries de prix de clôture des actifs du panier (ticker par ticker) à partir de fichiers CSV, en s’assurant d’avoir une période historique commune.\n"
-            "- **Étape 2 – Construction du dataset** : à partir de ces séries, on construit un jeu de données où chaque ligne correspond à un scénario de marché (niveaux de prix, volatilités implicites, corrélations, strike, maturité, etc.) et à un prix d’option panier associé (label).\n"
-            "- **Étape 3 – Séparation train / test** : le dataset est découpé selon `split_ratio` en un ensemble d’entraînement et un ensemble de test, afin de pouvoir évaluer la capacité du modèle à généraliser.\n"
-            "- **Étape 4 – Entraînement du réseau de neurones** : un modèle `build_model_nn` est instancié avec une architecture adaptée (couches denses, activations non linéaires). On l’entraîne pendant `epochs` itérations pour minimiser une fonction de perte de type MSE entre prix prédits et prix \"théoriques\" (issus de BSM multi‑actifs ou Monte Carlo).\n"
-            "- **Étape 5 – Suivi de l’apprentissage** : pendant l’entraînement, on suit l’évolution de la perte sur le jeu d’entraînement et de validation (MSE train / val) pour détecter surapprentissage ou sous‑apprentissage.\n"
-            "- **Étape 6 – Construction des heatmaps de prix** : une fois le modèle entraîné, on le met en production sur une grille de paramètres (par exemple `S` et `K` autour de valeurs communes) pour produire une heatmap des prix d’option basket.\n"
-            "- **Étape 7 – Construction de la surface de volatilité implicite** : en inversant éventuellement les prix du modèle sur un ensemble de paramètres, on peut reconstruire une surface de volatilité implicite associée au panier et la comparer aux données de marché.\n"
-            "- **Étape 8 – Analyse des résultats** : les heatmaps et les courbes MSE permettent de juger de la qualité de l’approximation et de l’intérêt du modèle pour un pricing rapide en temps réel."
-        ),
-    )
-    render_inputs_explainer(
-        "🔧 Paramètres utilisés – Basket",
-        (
-            "- **\"S0 (spot)\"** : niveau de spot de référence utilisé pour centrer certaines grilles de prix du panier.\n"
-            "- **\"K (strike)\"** : strike de référence du basket, autour duquel on définit les domaines de strikes.\n"
-            "- **\"T (maturité, années)\"** : maturité de référence utilisée pour les surfaces de prix ou de volatilité.\n"
-            "- **\"Taux sans risque r\"** : taux utilisé pour actualiser les flux dans les modèles internes.\n"
-            "- **Sélection des actifs du panier** : zone de texte / boutons permettant de choisir les tickers qui composeront le basket.\n"
-            "- **\"Train ratio\"** : pourcentage du dataset historique utilisé pour l’apprentissage (le reste servant au test).\n"
-            "- **\"Epochs d'entraînement\"** : nombre de passes sur le dataset lors de l’entraînement du réseau de neurones."
-        ),
-    )
-    ui_basket_surface(
-        spot_common=common_spot_value,
-        maturity_common=common_maturity_value,
-        rate_common=common_rate_value,
-        strike_common=common_strike_value,
-    )
-
-
-with tab_asian:
-    ui_asian_options(
-        spot_default=common_spot_value,
-        sigma_common=common_sigma_value,
-        maturity_common=common_maturity_value,
-        strike_common=common_strike_value,
-        rate_common=common_rate_value,
-    )
+tab_call, tab_put = st.tabs(["Call", "Put"])
+for _label, _tab in (("Call", tab_call), ("Put", tab_put)):
+    _char = "c" if _label == "Call" else "p"
+    with _tab:
+        render_option_tabs_for_type(_label, _char)
