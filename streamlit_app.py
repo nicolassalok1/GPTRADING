@@ -6,11 +6,14 @@ import alpaca_trade_api as tradeapi
 import time
 from dotenv import load_dotenv
 import pandas as pd
+import requests
+import datetime
 
 # Configuration
 DATA_FILE = "equities.json"
 PORTFOLIO_FILE = "portfolio.json"
 SELL_SYSTEMS_FILE = "sell_systems.json"
+OPTIONS_PORTFOLIO_FILE = "options_portfolio.json"
 load_dotenv()
 
 # Alpaca API Setup
@@ -100,6 +103,19 @@ def load_sell_systems():
 def save_sell_systems(sell_systems):
     with open(SELL_SYSTEMS_FILE, 'w') as f:
         json.dump(sell_systems, f, indent=2)
+
+
+def load_options_portfolio():
+    try:
+        with open(OPTIONS_PORTFOLIO_FILE, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def save_options_portfolio(options_portfolio):
+    with open(OPTIONS_PORTFOLIO_FILE, 'w') as f:
+        json.dump(options_portfolio, f, indent=2)
 
 def buy_asset(symbol, quantity, price):
     portfolio = load_portfolio()
@@ -256,6 +272,151 @@ def process_sell_systems():
         save_sell_systems(sell_systems)
     else:
         st.info("No sell levels were triggered based on current market prices.")
+
+
+def trade_option_contract(
+    contract_symbol,
+    underlying_symbol,
+    option_type,
+    strike,
+    expiration,
+    side,
+    quantity,
+    price,
+):
+    options_portfolio = load_options_portfolio()
+    now = time.strftime('%Y-%m-%d %H:%M:%S')
+
+    position = options_portfolio.get(contract_symbol)
+
+    if position:
+        old_qty = position['quantity']
+        old_avg = position['avg_price']
+        old_side = position.get('side', 'long')
+
+        if old_side == side:
+            new_qty = old_qty + quantity
+            new_avg = ((old_qty * old_avg) + (quantity * price)) / new_qty
+            options_portfolio[contract_symbol] = {
+                'underlying': underlying_symbol,
+                'type': option_type,
+                'strike': strike,
+                'expiration': expiration,
+                'quantity': new_qty,
+                'avg_price': round(new_avg, 4),
+                'side': side,
+                'last_updated': now,
+            }
+        else:
+            if quantity < old_qty:
+                new_qty = old_qty - quantity
+                options_portfolio[contract_symbol] = {
+                    'underlying': underlying_symbol,
+                    'type': option_type,
+                    'strike': strike,
+                    'expiration': expiration,
+                    'quantity': new_qty,
+                    'avg_price': old_avg,
+                    'side': old_side,
+                    'last_updated': now,
+                }
+            elif quantity == old_qty:
+                del options_portfolio[contract_symbol]
+            else:
+                new_qty = quantity - old_qty
+                options_portfolio[contract_symbol] = {
+                    'underlying': underlying_symbol,
+                    'type': option_type,
+                    'strike': strike,
+                    'expiration': expiration,
+                    'quantity': new_qty,
+                    'avg_price': round(price, 4),
+                    'side': side,
+                    'last_updated': now,
+                }
+    else:
+        options_portfolio[contract_symbol] = {
+            'underlying': underlying_symbol,
+            'type': option_type,
+            'strike': strike,
+            'expiration': expiration,
+            'quantity': quantity,
+            'avg_price': round(price, 4),
+            'side': side,
+            'last_updated': now,
+        }
+
+    save_options_portfolio(options_portfolio)
+    return options_portfolio.get(contract_symbol)
+
+
+def fetch_options_chain(symbol):
+    try:
+        url = f"https://cdn.cboe.com/api/global/delayed_quotes/options/{symbol.upper()}.json"
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        payload = response.json()
+        options = payload.get("data", {}).get("options", [])
+
+        today = datetime.date.today()
+        chain = []
+
+        for c in options:
+            opt_symbol = c.get("option")
+            if not opt_symbol or len(opt_symbol) < 15:
+                continue
+
+            # OCC symbology: root + YYMMDD + C/P + 8-digit strike
+            date_code = opt_symbol[-15:-9]  # YYMMDD
+            cp_flag = opt_symbol[-9]        # C or P
+            strike_code = opt_symbol[-8:]   # 8 digits
+
+            try:
+                year = 2000 + int(date_code[0:2])
+                month = int(date_code[2:4])
+                day = int(date_code[4:6])
+                expiration = datetime.date(year, month, day)
+            except Exception:
+                continue
+
+            try:
+                strike = int(strike_code) / 1000.0
+            except Exception:
+                continue
+
+            days_to_expiry = (expiration - today).days
+            T = max(days_to_expiry, 0) / 365.0
+
+            bid = c.get("bid", 0.0) or 0.0
+            ask = c.get("ask", 0.0) or 0.0
+            last = c.get("last_trade_price", 0.0) or 0.0
+
+            if bid > 0 and ask > 0:
+                price = (bid + ask) / 2.0
+            elif last > 0:
+                price = last
+            else:
+                price = max(bid, ask)
+
+            iv = c.get("iv", 0.0) or 0.0
+
+            chain.append(
+                {
+                    "symbol": opt_symbol,
+                    "underlying": payload.get("data", {}).get("symbol", symbol.upper()),
+                    "type": "call" if cp_flag.upper() == "C" else "put",
+                    "strike": strike,
+                    "expiration": expiration.isoformat(),
+                    "T": T,
+                    "price": price,
+                    "iv": iv,
+                }
+            )
+
+        return chain
+    except Exception as e:
+        st.error(f"Error fetching options from CBOE for {symbol}: {e}")
+        return []
 
 def chatgpt_response(message: str):
     try:
@@ -415,7 +576,14 @@ with st.sidebar:
         st.rerun()
 
 # Main tabs
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Dashboard", "💰 Buy/Sell", "➕ Add Equity", "🤖 AI Assistant", "📋 Trading Systems"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "📊 Dashboard",
+    "💰 Buy/Sell",
+    "➕ Add Equity",
+    "🤖 AI Assistant",
+    "📋 Trading Systems",
+    "🧾 Options",
+])
 
 # Tab 1: Dashboard
 with tab1:
@@ -494,6 +662,28 @@ with tab1:
             st.metric("Total Portfolio Value", f"${total_value:.2f}")
         with pnl_col:
             st.metric("Total P&L", f"${total_pnl:.2f}", delta=f"{total_pnl_pct:.2f}%")
+
+        # Options portfolio section
+        st.markdown("---")
+        st.markdown("### 📂 Options Portfolio")
+        options_portfolio = load_options_portfolio()
+        if options_portfolio:
+            options_rows = []
+            for contract_symbol, pos in options_portfolio.items():
+                options_rows.append({
+                    "Contract": contract_symbol,
+                    "Underlying": pos.get("underlying"),
+                    "Type": pos.get("type", "").capitalize(),
+                    "Side": pos.get("side", "long").capitalize(),
+                    "Strike": pos.get("strike"),
+                    "Expiration": pos.get("expiration"),
+                    "Quantity": pos.get("quantity"),
+                    "Avg Price": f"${pos.get('avg_price', 0):.4f}",
+                })
+            df_options = pd.DataFrame(options_rows)
+            st.dataframe(df_options, width="stretch", hide_index=True)
+        else:
+            st.info("No options positions in portfolio yet.")
     else:
         st.info("No assets in portfolio. Use the Buy/Sell tab to add positions.")
     
@@ -505,8 +695,10 @@ with tab1:
     if equities:
         systems_data = []
         for symbol, data in equities.items():
+            direction = data.get('direction', 'long')
             systems_data.append({
                 'Symbol': symbol,
+                'Direction': direction.capitalize(),
                 'Position': data['position'],
                 'Entry Price': f"${data['entry_price']:.2f}",
                 'Drawdown': f"{data['drawdown']*100:.1f}%",
@@ -681,30 +873,33 @@ with tab3:
         ### ➕ Ce que vous faites dans Add Equity
         
         Ici, vous ne passez pas d'ordres immédiats : vous **concevez des systèmes automatiques**
-        qui vont acheter pour vous selon une logique de drawdown et de niveaux de prix.
+        qui vont acheter ou vendre à découvert pour vous selon une logique de drawdown et de niveaux de prix.
         
         Le champ *Symbol* sert à choisir l'actif que vous voulez suivre
         de façon structurée (indice, action, ETF, crypto, etc.).
         
-        *Number of Levels* définit combien de paliers d'achat vous voulez.
-        Chaque niveau correspondra à un prix plus bas, où le système achètera
-        automatiquement une unité supplémentaire lorsque le marché corrigera.
+        Le champ *Direction* vous permet de choisir si vous pariez sur la hausse (Long) ou la baisse (Short) :
+        - **Long** : le système achètera automatiquement quand le prix baisse (niveaux en dessous du prix d'entrée)
+        - **Short** : le système vendra à découvert quand le prix monte (niveaux au dessus du prix d'entrée)
+        
+        *Number of Levels* définit combien de paliers d'achat/vente vous voulez.
+        Chaque niveau correspondra à un prix où le système interviendra automatiquement.
         
         *Drawdown %* contrôle l'écart entre ces niveaux de prix :
         un pourcentage faible donnera des niveaux proches les uns des autres,
-        un pourcentage plus élevé espacera davantage les achats.
+        un pourcentage plus élevé espacera davantage les interventions.
+        
+        Pour les positions Long, une valeur **positive** du drawdown sera stockée.
+        Pour les positions Short, une valeur **négative** du drawdown sera stockée.
         
         Quand vous cliquez sur *Add Equity*, l'outil calcule les niveaux
         à partir du prix actuel et enregistre un système en mode *Off* par défaut,
         que vous pourrez ensuite activer et superviser dans l'onglet *Trading Systems*.
         
-        Utilisez cet onglet pour **planifier à l'avance** comment vous voulez acheter
-        pendant les baisses, plutôt que d'improviser dans la panique quand le marché chute.
-        
-        Avant de valider, demandez-vous toujours si vous êtes à l'aise
-        avec le nombre de niveaux, le drawdown choisi et le capital total
-        que cela représentera si tous les niveaux sont déclenchés.
+        Utilisez cet onglet pour **planifier à l'avance** comment vous voulez intervenir
+        pendant les mouvements de marché, plutôt que d'improviser dans la panique.
         """)
+
     st.subheader("➕ Add New Equity")
     
     # Check current count
@@ -716,15 +911,18 @@ with tab3:
     if current_count >= 10:
         st.error("⚠️ Maximum limit reached! You cannot add more than 10 equities. Please remove one first.")
     else:
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             symbol = st.text_input("Symbol", placeholder="e.g., AAPL").upper()
         
         with col2:
-            levels = st.number_input("Number of Levels", min_value=1, max_value=10, value=5)
+            direction = st.radio("Direction", options=["Long", "Short"], index=0, horizontal=True, key="add_equity_direction")
         
         with col3:
+            levels = st.number_input("Number of Levels", min_value=1, max_value=10, value=5)
+        
+        with col4:
             drawdown = st.number_input("Drawdown %", min_value=0.1, max_value=50.0, value=5.0, step=0.1)
         
         if st.button("➕ Add Equity", type="primary"):
@@ -742,18 +940,27 @@ with tab3:
                     
                     if entry_price > 0:
                         drawdown_decimal = drawdown / 100
-                        level_prices = {str(i+1): round(entry_price * (1 - drawdown_decimal * (i+1)), 2) for i in range(levels)}
+                        
+                        # Long: drawdown positif, niveaux en dessous du prix d'entrée
+                        # Short: drawdown négatif, niveaux au dessus du prix d'entrée
+                        if direction == "Long":
+                            level_prices = {str(i+1): round(entry_price * (1 - drawdown_decimal * (i+1)), 2) for i in range(levels)}
+                            stored_drawdown = drawdown_decimal
+                        else:  # Short
+                            level_prices = {str(i+1): round(entry_price * (1 + drawdown_decimal * (i+1)), 2) for i in range(levels)}
+                            stored_drawdown = -drawdown_decimal
                         
                         equities[symbol] = {
                             "position": 0,
                             "entry_price": entry_price,
                             "levels": level_prices,
-                            "drawdown": drawdown_decimal,
+                            "drawdown": stored_drawdown,
+                            "direction": direction.lower(),
                             "status": "Off"
                         }
                         
                         save_equities(equities)
-                        st.success(f"✅ Added {symbol} at ${entry_price:.2f}")
+                        st.success(f"✅ Added {symbol} ({direction}) at ${entry_price:.2f}")
                         st.balloons()
                         time.sleep(1)
                         st.rerun()
@@ -851,19 +1058,23 @@ with tab5:
     
     if equities:
         for symbol, data in equities.items():
-            with st.expander(f"{symbol} - Status: {data['status']}", expanded=True):
-                col1, col2, col3, col4 = st.columns(4)
+            direction = data.get('direction', 'long')
+            with st.expander(f"{symbol} ({direction.upper()}) - Status: {data['status']}", expanded=True):
+                col1, col2, col3, col4, col5 = st.columns(5)
                 
                 with col1:
-                    st.metric("Position", data['position'])
+                    st.metric("Direction", direction.capitalize())
                 
                 with col2:
-                    st.metric("Entry Price", f"${data['entry_price']:.2f}")
+                    st.metric("Position", data['position'])
                 
                 with col3:
-                    st.metric("Drawdown", f"{data['drawdown']*100:.1f}%")
+                    st.metric("Entry Price", f"${data['entry_price']:.2f}")
                 
                 with col4:
+                    st.metric("Drawdown", f"{data['drawdown']*100:.1f}%")
+                
+                with col5:
                     current_status = data['status']
                     new_status = st.toggle(
                         "Active", 
@@ -893,6 +1104,235 @@ with tab5:
                     st.rerun()
     else:
         st.info("No trading systems configured. Add an equity in the 'Add Equity' tab.")
+
+# Tab 6: Options
+with tab6:
+    with st.expander("📘 Comprendre Options"):
+        st.markdown("""
+        ### 🧾 Ce que vous faites dans Options
+        
+        Cet onglet vous permet d'explorer les **options européennes** liées à un sous-jacent,
+        puis de prendre des positions longues (achat) ou courtes (vente à découvert) sur un contrat précis.
+        
+        L'idée est de vous donner un outil complémentaire aux actions :
+        vous pouvez exprimer une vue directionnelle avec effet de levier,
+        couvrir une position existante, ou structurer des paris plus finement
+        qu'avec le sous-jacent seul.
+        
+        Le flux de travail est le suivant :
+        1. Vous choisissez un **ticker sous-jacent** (par exemple AAPL)
+        2. L'application récupère une liste de contrats d'options européennes disponibles
+        3. Vous sélectionnez un contrat (type, strike, échéance)
+        4. Vous choisissez si vous voulez être **Long** (acheteur de l'option) ou **Short** (vendeur)
+        5. Vous entrez la quantité et le prix, puis vous validez l'ordre
+        
+        Toutes vos positions options sont ensuite visibles dans la section *Options Portfolio*
+        du Dashboard, avec le sens (Long/Short) clairement indiqué.
+        """)
+
+    st.subheader("🧾 Trade Options (European)")
+
+    underlying_symbol = st.text_input(
+        "Underlying symbol for options",
+        placeholder="e.g., AAPL",
+        key="opt_underlying",
+    ).upper()
+
+    if "options_chain" not in st.session_state:
+        st.session_state.options_chain = []
+
+    if underlying_symbol:
+        if st.button("🔍 Load European options chain", key="load_options_chain"):
+            st.session_state.options_chain = fetch_options_chain(underlying_symbol)
+
+    options_chain = st.session_state.options_chain
+
+    if underlying_symbol and options_chain:
+        # Step 1: choose maturity T (years)
+        unique_T_values = sorted({round(c["T"], 4) for c in options_chain})
+        display_T_values = [f"{t:.2f}" for t in unique_T_values]
+
+        selected_T_display = st.selectbox(
+            "Select maturity T (years)",
+            options=display_T_values,
+            key="opt_selected_T",
+        )
+
+        try:
+            selected_T = float(selected_T_display)
+        except ValueError:
+            selected_T = None
+
+        if selected_T is not None:
+            filtered_by_T = [
+                c for c in options_chain if round(c["T"], 2) == round(selected_T, 2)
+            ]
+
+            if filtered_by_T:
+                st.markdown("#### Select strike (K) for chosen T")
+
+                tab_call, tab_put = st.tabs(["Call", "Put"])
+
+                # Calls tab
+                with tab_call:
+                    calls_for_T = [c for c in filtered_by_T if c["type"] == "call"]
+                    if not calls_for_T:
+                        st.info("No call options for this maturity.")
+                    else:
+                        unique_K_call = sorted({c["strike"] for c in calls_for_T})
+                        if unique_K_call:
+                            idx_call = st.slider(
+                                "Strike (K) - Call",
+                                min_value=0,
+                                max_value=len(unique_K_call) - 1,
+                                value=min(len(unique_K_call) // 2, len(unique_K_call) - 1),
+                                step=1,
+                                key="opt_call_strike_idx",
+                            )
+                            selected_K_call = unique_K_call[idx_call]
+                            selected_call = next(
+                                (c for c in calls_for_T if c["strike"] == selected_K_call),
+                                None,
+                            )
+
+                            if selected_call:
+                                st.write(
+                                    f"Selected Call: **K = {selected_call['strike']:.2f}**, "
+                                    f"**T = {selected_call['T']:.2f}**, "
+                                    f"**Price = {selected_call['price']:.2f}**, "
+                                    f"**IV = {selected_call['iv']:.2f}**"
+                                )
+
+                                side_call = st.radio(
+                                    "Position side",
+                                    options=["Long", "Short"],
+                                    horizontal=True,
+                                    key="opt_side_call",
+                                )
+                                qty_call = st.number_input(
+                                    "Quantity (contracts)",
+                                    min_value=1,
+                                    value=1,
+                                    step=1,
+                                    key="opt_qty_call",
+                                )
+                                default_price_call = (
+                                    float(f"{selected_call['price']:.2f}")
+                                    if selected_call["price"] > 0
+                                    else 1.00
+                                )
+                                price_call = st.number_input(
+                                    "Price per contract",
+                                    min_value=0.01,
+                                    value=default_price_call,
+                                    step=0.01,
+                                    key="opt_price_call",
+                                )
+
+                                if st.button(
+                                    "✅ Execute Call Trade",
+                                    type="primary",
+                                    key="exec_option_call",
+                                ):
+                                    result = trade_option_contract(
+                                        contract_symbol=selected_call["symbol"],
+                                        underlying_symbol=selected_call.get("underlying"),
+                                        option_type=selected_call.get("type"),
+                                        strike=selected_call.get("strike"),
+                                        expiration=selected_call.get("expiration"),
+                                        side=side_call.lower(),
+                                        quantity=int(qty_call),
+                                        price=float(price_call),
+                                    )
+                                    if result:
+                                        st.success(
+                                            f"{side_call} {qty_call}x {selected_call['symbol']} "
+                                            f"@ {price_call:.2f} recorded in options portfolio."
+                                        )
+                                    else:
+                                        st.success("Option position updated / closed.")
+
+                # Puts tab
+                with tab_put:
+                    puts_for_T = [c for c in filtered_by_T if c["type"] == "put"]
+                    if not puts_for_T:
+                        st.info("No put options for this maturity.")
+                    else:
+                        unique_K_put = sorted({c["strike"] for c in puts_for_T})
+                        if unique_K_put:
+                            idx_put = st.slider(
+                                "Strike (K) - Put",
+                                min_value=0,
+                                max_value=len(unique_K_put) - 1,
+                                value=min(len(unique_K_put) // 2, len(unique_K_put) - 1),
+                                step=1,
+                                key="opt_put_strike_idx",
+                            )
+                            selected_K_put = unique_K_put[idx_put]
+                            selected_put = next(
+                                (c for c in puts_for_T if c["strike"] == selected_K_put),
+                                None,
+                            )
+
+                            if selected_put:
+                                st.write(
+                                    f"Selected Put: **K = {selected_put['strike']:.2f}**, "
+                                    f"**T = {selected_put['T']:.2f}**, "
+                                    f"**Price = {selected_put['price']:.2f}**, "
+                                    f"**IV = {selected_put['iv']:.2f}**"
+                                )
+
+                                side_put = st.radio(
+                                    "Position side",
+                                    options=["Long", "Short"],
+                                    horizontal=True,
+                                    key="opt_side_put",
+                                )
+                                qty_put = st.number_input(
+                                    "Quantity (contracts)",
+                                    min_value=1,
+                                    value=1,
+                                    step=1,
+                                    key="opt_qty_put",
+                                )
+                                default_price_put = (
+                                    float(f"{selected_put['price']:.2f}")
+                                    if selected_put["price"] > 0
+                                    else 1.00
+                                )
+                                price_put = st.number_input(
+                                    "Price per contract",
+                                    min_value=0.01,
+                                    value=default_price_put,
+                                    step=0.01,
+                                    key="opt_price_put",
+                                )
+
+                                if st.button(
+                                    "✅ Execute Put Trade",
+                                    type="primary",
+                                    key="exec_option_put",
+                                ):
+                                    result = trade_option_contract(
+                                        contract_symbol=selected_put["symbol"],
+                                        underlying_symbol=selected_put.get("underlying"),
+                                        option_type=selected_put.get("type"),
+                                        strike=selected_put.get("strike"),
+                                        expiration=selected_put.get("expiration"),
+                                        side=side_put.lower(),
+                                        quantity=int(qty_put),
+                                        price=float(price_put),
+                                    )
+                                    if result:
+                                        st.success(
+                                            f"{side_put} {qty_put}x {selected_put['symbol']} "
+                                            f"@ {price_put:.2f} recorded in options portfolio."
+                                        )
+                                    else:
+                                        st.success("Option position updated / closed.")
+
+    elif underlying_symbol and not options_chain:
+        st.info("No European options found or failed to load chain for this symbol.")
 
 # Footer
 st.markdown("---")
