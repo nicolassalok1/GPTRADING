@@ -505,11 +505,15 @@ with tab1:
     if equities:
         systems_data = []
         for symbol, data in equities.items():
+            direction = data.get('direction', 'long')  # Default to 'long' for backward compatibility
+            drawdown_value = data['drawdown']
+            # Display drawdown as absolute value with direction label
             systems_data.append({
                 'Symbol': symbol,
+                'Direction': direction.capitalize(),
                 'Position': data['position'],
                 'Entry Price': f"${data['entry_price']:.2f}",
-                'Drawdown': f"{data['drawdown']*100:.1f}%",
+                'Drawdown': f"{abs(drawdown_value)*100:.1f}%",
                 'Levels': len(data['levels']),
                 'Status': data['status']
             })
@@ -681,25 +685,28 @@ with tab3:
         ### ➕ Ce que vous faites dans Add Equity
         
         Ici, vous ne passez pas d'ordres immédiats : vous **concevez des systèmes automatiques**
-        qui vont acheter pour vous selon une logique de drawdown et de niveaux de prix.
+        qui vont acheter ou shorter pour vous selon une logique de drawdown et de niveaux de prix.
         
         Le champ *Symbol* sert à choisir l'actif que vous voulez suivre
         de façon structurée (indice, action, ETF, crypto, etc.).
         
-        *Number of Levels* définit combien de paliers d'achat vous voulez.
-        Chaque niveau correspondra à un prix plus bas, où le système achètera
-        automatiquement une unité supplémentaire lorsque le marché corrigera.
+        *Direction* vous permet de choisir entre :
+        - **Long** : acheter sur les baisses - le système achètera automatiquement quand le prix baisse
+        - **Short** : shorter sur les hausses - le système shortera automatiquement quand le prix monte
+        
+        *Number of Levels* définit combien de paliers d'achat/short vous voulez.
+        Chaque niveau correspondra à un prix différent, où le système agira automatiquement.
         
         *Drawdown %* contrôle l'écart entre ces niveaux de prix :
-        un pourcentage faible donnera des niveaux proches les uns des autres,
-        un pourcentage plus élevé espacera davantage les achats.
+        - Pour **Long** : un drawdown de 5% signifie que chaque niveau sera 5% plus bas que le précédent
+        - Pour **Short** : un drawdown de 5% signifie que chaque niveau sera 5% plus haut que le précédent
         
         Quand vous cliquez sur *Add Equity*, l'outil calcule les niveaux
         à partir du prix actuel et enregistre un système en mode *Off* par défaut,
         que vous pourrez ensuite activer et superviser dans l'onglet *Trading Systems*.
         
-        Utilisez cet onglet pour **planifier à l'avance** comment vous voulez acheter
-        pendant les baisses, plutôt que d'improviser dans la panique quand le marché chute.
+        Utilisez cet onglet pour **planifier à l'avance** comment vous voulez trader
+        pendant les mouvements de marché, plutôt que d'improviser dans la panique.
         
         Avant de valider, demandez-vous toujours si vous êtes à l'aise
         avec le nombre de niveaux, le drawdown choisi et le capital total
@@ -716,15 +723,18 @@ with tab3:
     if current_count >= 10:
         st.error("⚠️ Maximum limit reached! You cannot add more than 10 equities. Please remove one first.")
     else:
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             symbol = st.text_input("Symbol", placeholder="e.g., AAPL").upper()
         
         with col2:
-            levels = st.number_input("Number of Levels", min_value=1, max_value=10, value=5)
+            direction = st.radio("Direction", options=["Long", "Short"], index=0, key="add_equity_direction")
         
         with col3:
+            levels = st.number_input("Number of Levels", min_value=1, max_value=10, value=5)
+        
+        with col4:
             drawdown = st.number_input("Drawdown %", min_value=0.1, max_value=50.0, value=5.0, step=0.1)
         
         if st.button("➕ Add Equity", type="primary"):
@@ -742,18 +752,29 @@ with tab3:
                     
                     if entry_price > 0:
                         drawdown_decimal = drawdown / 100
-                        level_prices = {str(i+1): round(entry_price * (1 - drawdown_decimal * (i+1)), 2) for i in range(levels)}
+                        
+                        # For Long: levels are below entry price (buy on dips) - negative drawdown
+                        # For Short: levels are above entry price (short on rallies) - positive drawdown
+                        if direction == "Long":
+                            # Negative drawdown for long positions (prices decrease)
+                            level_prices = {str(i+1): round(entry_price * (1 - drawdown_decimal * (i+1)), 2) for i in range(levels)}
+                            stored_drawdown = -drawdown_decimal  # Store as negative
+                        else:  # Short
+                            # Positive drawdown for short positions (prices increase)
+                            level_prices = {str(i+1): round(entry_price * (1 + drawdown_decimal * (i+1)), 2) for i in range(levels)}
+                            stored_drawdown = drawdown_decimal  # Store as positive
                         
                         equities[symbol] = {
                             "position": 0,
                             "entry_price": entry_price,
                             "levels": level_prices,
-                            "drawdown": drawdown_decimal,
+                            "drawdown": stored_drawdown,
+                            "direction": direction.lower(),
                             "status": "Off"
                         }
                         
                         save_equities(equities)
-                        st.success(f"✅ Added {symbol} at ${entry_price:.2f}")
+                        st.success(f"✅ Added {symbol} ({direction}) at ${entry_price:.2f}")
                         st.balloons()
                         time.sleep(1)
                         st.rerun()
@@ -851,19 +872,24 @@ with tab5:
     
     if equities:
         for symbol, data in equities.items():
-            with st.expander(f"{symbol} - Status: {data['status']}", expanded=True):
-                col1, col2, col3, col4 = st.columns(4)
+            direction = data.get('direction', 'long').capitalize()
+            with st.expander(f"{symbol} ({direction}) - Status: {data['status']}", expanded=True):
+                col1, col2, col3, col4, col5 = st.columns(5)
                 
                 with col1:
-                    st.metric("Position", data['position'])
+                    st.metric("Direction", direction)
                 
                 with col2:
-                    st.metric("Entry Price", f"${data['entry_price']:.2f}")
+                    st.metric("Position", data['position'])
                 
                 with col3:
-                    st.metric("Drawdown", f"{data['drawdown']*100:.1f}%")
+                    st.metric("Entry Price", f"${data['entry_price']:.2f}")
                 
                 with col4:
+                    drawdown_value = data['drawdown']
+                    st.metric("Drawdown", f"{abs(drawdown_value)*100:.1f}%")
+                
+                with col5:
                     current_status = data['status']
                     new_status = st.toggle(
                         "Active", 

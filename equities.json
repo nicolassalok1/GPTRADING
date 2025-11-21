@@ -14,7 +14,8 @@
       "9": 28.82,
       "10": 28.79
     },
-    "drawdown": 0.001,
+    "drawdown": -0.001,
+    "direction": "long",
     "status": "On"
   },
   "BTC": {
@@ -27,7 +28,8 @@
       "4": 36.1,
       "5": 35.72
     },
-    "drawdown": 0.01,
+    "drawdown": -0.01,
+    "direction": "long",
     "status": "On"
   }
 }
