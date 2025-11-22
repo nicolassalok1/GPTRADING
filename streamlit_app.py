@@ -6542,6 +6542,31 @@ with tab1:
                 chain_list = fetch_options_chain(und)
                 chains_by_underlying_custom[und] = chain_list
             mark_map = {}
+            def _pricing_metadata(prod: str) -> tuple[str, list[str]]:
+                prod_low = (prod or "").lower()
+                if "barrier" in prod_low:
+                    return "barrier_pricer", ["option_type", "barrier_type/knock/direction", "barrier_level", "strike", "expiration", "sigma", "S0", "r", "q"]
+                if "asian" in prod_low:
+                    return "asian_pricer", ["option_type", "strike", "expiration", "sigma", "S0", "r", "q", "n_obs"]
+                if "digital" in prod_low:
+                    return "digital_pricer", ["option_type", "strike", "expiration", "sigma", "S0", "r", "q", "payout"]
+                if "asset-or-nothing" in prod_low:
+                    return "asset_or_nothing_pricer", ["option_type", "strike", "expiration", "sigma", "S0", "r", "q"]
+                if "forward-start" in prod_low:
+                    return "forward_start_pricer", ["option_type", "strike", "T_start", "expiration", "sigma", "S0", "r", "q"]
+                if "chooser" in prod_low:
+                    return "chooser_pricer", ["option_type", "strike", "expiration", "t_choice", "sigma", "S0", "r", "q"]
+                if "straddle" in prod_low:
+                    return "straddle_pricer", ["S0", "strike", "expiration", "sigma", "r", "q"]
+                if "strangle" in prod_low:
+                    return "strangle_pricer", ["S0", "strike_put", "strike_call", "expiration", "sigma", "r", "q"]
+                if "spread" in prod_low or "butterfly" in prod_low or "condor" in prod_low:
+                    return "spread_pricer", ["legs (strike/side/type)", "expiration", "sigma", "S0", "r", "q"]
+                if "lookback" in prod_low:
+                    return "lookback_pricer", ["option_type", "strike", "expiration", "sigma", "S0", "r", "q", "n_paths", "n_steps"]
+                if "cliquet" in prod_low or "ratchet" in prod_low:
+                    return "cliquet_pricer", ["n_periods", "cap", "floor", "sigma", "S0", "r", "q", "n_paths"]
+                return "vanilla_bsm", ["option_type", "strike", "expiration", "sigma", "S0", "r", "q"]
             rows_custom = []
             for key, pos in custom_opts.items():
                 underlying = pos.get("underlying")
@@ -6675,6 +6700,21 @@ with tab1:
                     strike2_val = pos.get("strike2")
                     strike2 = float(strike2_val) if strike2_val not in (None, "") else None
                     misc = pos.get("misc")
+                    pricing_fn, needed = _pricing_metadata(product)
+                    available = set(k for k in [
+                        "option_type",
+                        "strike" if strike is not None else None,
+                        "strike2" if strike2 is not None else None,
+                        "expiration" if pos.get("expiration") else None,
+                        "quantity" if qty else None,
+                        "sigma" if sigma_used else None,
+                        "S0" if spot else None,
+                        "legs" if pos.get("legs") else None,
+                    ] if k)
+                    if isinstance(misc, dict):
+                        available.update(misc.keys())
+                    missing = set(needed) - available
+                    extra = available - set(needed)
                     btn_label = "Close"
                     close_max = max(1, int(qty)) if qty and qty > 0 else 1
 
@@ -6706,6 +6746,15 @@ with tab1:
                             st.metric("PnL if closed", f"${pnl_total:.2f}", delta=f"{pnl_per_unit:.4f}")
                         if isinstance(misc, dict) and misc:
                             st.caption(f"Misc: {misc}")
+                        st.caption(f"Pricing fn: {pricing_fn}")
+                        st.caption(f"Paramètres requis: {needed}")
+                        st.caption(f"Paramètres disponibles: {sorted(available)}")
+                        if missing:
+                            st.markdown(f"🟥 Paramètres manquants: {sorted(missing)}")
+                        elif extra:
+                            st.markdown(f"🟨 Paramètres en trop: {sorted(extra)}")
+                        else:
+                            st.markdown("🟩 Paramètres OK pour pricer")
 
                         if st.button(f"✅ {btn_label}", key=f"close_custom_{key}"):
                             book = load_options_book()
