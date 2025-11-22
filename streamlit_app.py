@@ -2947,6 +2947,8 @@ def run_app_options():
 
 
     def ui_heston_full_pipeline(auto_run: bool = False):
+
+
         col_cfg1, col_cfg2 = st.columns(2)
         with col_cfg1:
             ticker = st.text_input(
@@ -3045,43 +3047,43 @@ def run_app_options():
         learning_rate = 0.005
 
         if calls_df is not None and puts_df is not None and S0_ref is not None:
-            with st.expander("🎯 Calibration NN Carr-Madan", expanded=False):
-                col_nn, col_modes = st.columns(2)
-                with col_nn:
-                    calib_T_band = st.number_input(
-                        "Largeur bande T (±)",
-                        value=0.04,
-                        min_value=0.01,
-                        max_value=0.5,
-                        step=0.01,
-                        format="%.2f",
-                        key="heston_cboe_calib_band",
-                        help="Largeur de la bande de maturités autour de la cible utilisée pour la calibration.",
-                    )
+            col_nn, col_modes = st.columns(2)
+            with col_nn:
+                st.subheader("🎯 Calibration NN Carr-Madan")
+                calib_T_band = st.number_input(
+                    "Largeur bande T (±)",
+                    value=0.04,
+                    min_value=0.01,
+                    max_value=0.5,
+                    step=0.01,
+                    format="%.2f",
+                    key="heston_cboe_calib_band",
+                    help="Largeur de la bande de maturités autour de la cible utilisée pour la calibration.",
+                )
 
-                    unique_T = sorted(calls_df["T"].round(2).unique().tolist())
-                    if unique_T:
-                        if calib_T_target is None:
-                            target_guess = max(MIN_IV_MATURITY, unique_T[0] + calib_T_band + 0.1)
-                            idx_default = int(np.argmin(np.abs(np.array(unique_T) - target_guess)))
-                        else:
-                            try:
-                                idx_default = unique_T.index(calib_T_target)
-                            except ValueError:
-                                idx_default = 0
-
-                        calib_T_target = st.selectbox(
-                            "Maturité T cible pour la calibration (Time to Maturity)",
-                            unique_T,
-                            index=idx_default,
-                            format_func=lambda x: f"{x:.2f}",
-                            key="heston_cboe_calib_target",
-                            help="Maturité autour de laquelle la calibration Heston est centrée.",
-                        )
-                        state.heston_calib_T_target = calib_T_target
+                unique_T = sorted(calls_df["T"].round(2).unique().tolist())
+                if unique_T:
+                    if calib_T_target is None:
+                        target_guess = max(MIN_IV_MATURITY, unique_T[0] + calib_T_band + 0.1)
+                        idx_default = int(np.argmin(np.abs(np.array(unique_T) - target_guess)))
                     else:
-                        st.warning("Pas de maturités disponibles dans les données CBOE.")
-                        calib_T_target = None
+                        try:
+                            idx_default = unique_T.index(calib_T_target)
+                        except ValueError:
+                            idx_default = 0
+
+                    calib_T_target = st.selectbox(
+                        "Maturité T cible pour la calibration (Time to Maturity)",
+                        unique_T,
+                        index=idx_default,
+                        format_func=lambda x: f"{x:.2f}",
+                        key="heston_cboe_calib_target",
+                        help="Maturité autour de laquelle la calibration Heston est centrée.",
+                    )
+                    state.heston_calib_T_target = calib_T_target
+                else:
+                    st.warning("Pas de maturités disponibles dans les données CBOE.")
+                    calib_T_target = None
 
                 with col_modes:
                     st.subheader("⚙️ Modes de calibration NN")
@@ -3115,10 +3117,11 @@ def run_app_options():
             else:
                 calib_band_range = None
 
-            run_button = st.button("🚀 Lancer la calibration", type="primary", width="stretch", key="heston_cboe_run")
+        run_button = False
+        if calls_df is not None and puts_df is not None and S0_ref is not None:
+            # Only explicit click launches calibration; changing K/T won't auto-relance
+            run_button = st.button("🚀 Lancer l'analyse", type="primary", width="stretch", key="heston_cboe_run")
             st.divider()
-        else:
-            run_button = False
 
         if run_button:
             if calls_df is None or puts_df is None or S0_ref is None:
@@ -3242,7 +3245,7 @@ def run_app_options():
 
     ui_heston_full_pipeline()
 
-    st.markdown("### Paramètres de Black-Scholes-Mer")
+    st.markdown("### Paramètres de Black-Scholes-Merton / Heston")
 
     # Masquer le reste tant que les données CBOE n'ont pas été récupérées
     if not st.session_state.get("heston_cboe_loaded_once", False):
@@ -4234,28 +4237,32 @@ def run_app_options():
             st.caption("Pricing direct avec Carr–Madan (Heston calibré).")
             params_heston = _heston_params_from_state()
             cpflag_heston = option_label
-            try:
-                price_cm = _carr_madan_price(
-                    S0=float(common_spot_value),
-                    K=float(common_strike_value),
-                    T=float(common_maturity_value),
-                    r=float(common_rate_value),
-                    q=float(d_common),
-                    opt_char=option_char,
-                    params=params_heston,
-                )
-                st.success(f"Prix Heston (Carr–Madan) {cpflag_heston} = {price_cm:.6f}")
-                render_add_to_dashboard_button(
-                    product_label="Vanilla (Heston CM)",
-                    option_char=option_char,
-                    price_value=price_cm,
-                    strike=common_strike_value,
-                    maturity=common_maturity_value,
-                    key_prefix=_k("save_heston_cm"),
-                    spot=common_spot_value,
-                )
-            except Exception as exc:
-                st.error(f"Erreur Carr–Madan : {exc}")
+            if st.button(
+                f"Calculer le prix Heston Carr–Madan ({cpflag_heston})",
+                key=_k("btn_price_heston_cm"),
+            ):
+                try:
+                    price_cm = _carr_madan_price(
+                        S0=float(common_spot_value),
+                        K=float(common_strike_value),
+                        T=float(common_maturity_value),
+                        r=float(common_rate_value),
+                        q=float(d_common),
+                        opt_char=option_char,
+                        params=params_heston,
+                    )
+                    st.success(f"Prix Heston (Carr–Madan) {cpflag_heston} = {price_cm:.6f}")
+                    render_add_to_dashboard_button(
+                        product_label="Vanilla (Heston CM)",
+                        option_char=option_char,
+                        price_value=price_cm,
+                        strike=common_strike_value,
+                        maturity=common_maturity_value,
+                        key_prefix=_k("save_heston_cm"),
+                        spot=common_spot_value,
+                    )
+                except Exception as exc:
+                    st.error(f"Erreur Carr–Madan : {exc}")
 
             with st.expander("Visualisations Heston (Carr–Madan)", expanded=False):
                 try:
@@ -4338,26 +4345,30 @@ def run_app_options():
             )
             cpflag_eu_bsm = option_label
             st.caption("Type fixé par l’onglet Call / Put en haut de page.")
-            opt_type = "call" if option_char == "c" else "put"
-            price_bsm = _vanilla_price_with_dividend(
-                option_type=opt_type,
-                S0=common_spot_value,
-                K=common_strike_value,
-                T=common_maturity_value,
-                r=common_rate_value,
-                dividend=float(d_common),
-                sigma=common_sigma_value,
-            )
-            st.success(f"Prix BSM ({cpflag_eu_bsm}) = {price_bsm:.6f}")
-            render_add_to_dashboard_button(
-                product_label="Vanilla (BSM)",
-                option_char=option_char,
-                price_value=price_bsm,
-                strike=common_strike_value,
-                maturity=common_maturity_value,
-                key_prefix=_k("save_bsm"),
-                spot=common_spot_value,
-            )
+            if st.button(
+                f"Calculer le prix BSM ({cpflag_eu_bsm})",
+                key=_k("btn_price_eu_bsm"),
+            ):
+                opt_type = "call" if option_char == "c" else "put"
+                price_bsm = _vanilla_price_with_dividend(
+                    option_type=opt_type,
+                    S0=common_spot_value,
+                    K=common_strike_value,
+                    T=common_maturity_value,
+                    r=common_rate_value,
+                    dividend=float(d_common),
+                    sigma=common_sigma_value,
+                )
+                st.success(f"Prix BSM ({cpflag_eu_bsm}) = {price_bsm:.6f}")
+                render_add_to_dashboard_button(
+                    product_label="Vanilla (BSM)",
+                    option_char=option_char,
+                    price_value=price_bsm,
+                    strike=common_strike_value,
+                    maturity=common_maturity_value,
+                    key_prefix=_k("save_bsm"),
+                    spot=common_spot_value,
+                )
             st.caption(
                 f"Paramètres utilisés pour le prix unique BSM : "
                 f"S0={common_spot_value:.4f}, K={common_strike_value:.4f}, "
@@ -4421,33 +4432,37 @@ def run_app_options():
             else:
                 st.caption("Heston désactivé : fais la calibration Heston pour l’activer.")
 
-            if st.button(
-                f"Calculer le prix américain Heston ({cpflag_am})",
-                key=_k("btn_price_am_heston"),
-                disabled=not heston_ready,
-            ):
-                progress = st.progress(0)
-                try:
-                    option_ls = Option(
-                        s0=S0_common,
-                        T=T_common,
-                        K=K_common,
-                        v0=v0_am_hes,
-                        call=(cpflag_am == "Call"),
-                    )
-                    progress.progress(35)
-                    price_ls = longstaff_schwartz_price(
-                        option=option_ls,
-                        process=process_am_hes,
-                        n_paths=int(n_paths_am_hes),
-                        n_steps=int(n_steps_am_hes),
-                    )
-                    progress.progress(75)
-                    st.success(f"Prix américain Heston L-S ({cpflag_am}) = {price_ls:.6f}")
-                except Exception as exc:
-                    st.error(f"Erreur Longstaff–Schwartz Heston : {exc}")
-                finally:
-                    progress.empty()
+            with st.expander(f"📈 Pricing Heston L-S ({cpflag_am})", expanded=False):
+                if not heston_ready:
+                    st.info("Calibration Heston requise.")
+                else:
+                    with st.spinner("Calcul Longstaff–Schwartz Heston..."):
+                        try:
+                            option_ls = Option(
+                                s0=S0_common,
+                                T=T_common,
+                                K=K_common,
+                                v0=v0_am_hes,
+                                call=(cpflag_am == "Call"),
+                            )
+                            price_ls = longstaff_schwartz_price(
+                                option=option_ls,
+                                process=process_am_hes,
+                                n_paths=int(n_paths_am_hes),
+                                n_steps=int(n_steps_am_hes),
+                            )
+                            st.success(f"Prix américain Heston L-S ({cpflag_am}) = {price_ls:.6f}")
+                            render_add_to_dashboard_button(
+                                product_label="American (Heston L-S)",
+                                option_char=option_char,
+                                price_value=price_ls,
+                                strike=K_common,
+                                maturity=T_common,
+                                key_prefix=_k("save_am_heston_ls"),
+                                spot=S0_common,
+                            )
+                        except Exception as exc:
+                            st.error(f"Erreur Longstaff–Schwartz Heston : {exc}")
             with st.expander("Heatmap Heston (L-S)", expanded=False):
                 if heston_ready:
                     with st.spinner("Calcul des heatmaps Heston L-S"):
@@ -4493,32 +4508,34 @@ def run_app_options():
             )
             process_am_gbm = GeometricBrownianMotion(mu=r_common - d_common, sigma=sigma_common)
 
-            if st.button(
-                f"Calculer le prix américain GBM ({cpflag_am})",
-                key=_k("btn_price_am_gbm"),
-            ):
-                progress = st.progress(0)
-                try:
-                    option_ls = Option(
-                        s0=S0_common,
-                        T=T_common,
-                        K=K_common,
-                        v0=None,
-                        call=(cpflag_am == "Call"),
-                    )
-                    progress.progress(35)
-                    price_ls = longstaff_schwartz_price(
-                        option=option_ls,
-                        process=process_am_gbm,
-                        n_paths=int(n_paths_am_gbm),
-                        n_steps=int(n_steps_am_gbm),
-                    )
-                    progress.progress(75)
-                    st.success(f"Prix américain GBM L-S ({cpflag_am}) = {price_ls:.6f}")
-                except Exception as exc:
-                    st.error(f"Erreur Longstaff–Schwartz GBM : {exc}")
-                finally:
-                    progress.empty()
+            with st.expander(f"📈 Pricing GBM L-S ({cpflag_am})", expanded=False):
+                with st.spinner("Calcul Longstaff–Schwartz GBM..."):
+                    try:
+                        option_ls = Option(
+                            s0=S0_common,
+                            T=T_common,
+                            K=K_common,
+                            v0=None,
+                            call=(cpflag_am == "Call"),
+                        )
+                        price_ls = longstaff_schwartz_price(
+                            option=option_ls,
+                            process=process_am_gbm,
+                            n_paths=int(n_paths_am_gbm),
+                            n_steps=int(n_steps_am_gbm),
+                        )
+                        st.success(f"Prix américain GBM L-S ({cpflag_am}) = {price_ls:.6f}")
+                        render_add_to_dashboard_button(
+                            product_label="American (GBM L-S)",
+                            option_char=option_char,
+                            price_value=price_ls,
+                            strike=K_common,
+                            maturity=T_common,
+                            key_prefix=_k("save_am_gbm_ls"),
+                            spot=S0_common,
+                        )
+                    except Exception as exc:
+                        st.error(f"Erreur Longstaff–Schwartz GBM : {exc}")
             with st.expander("Heatmap GBM (L-S)", expanded=False):
                 with st.spinner("Calcul des heatmaps GBM L-S"):
                     call_heatmap_ls, put_heatmap_ls = _compute_american_ls_heatmaps(
