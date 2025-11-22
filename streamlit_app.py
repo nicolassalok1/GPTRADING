@@ -100,6 +100,7 @@ def run_app_options():
             return
 
         with st.expander(f"📥 Ajouter au dashboard ({product_label})", expanded=expanded):
+            st.metric("Prix calculé", f"${price_value:.6f}")
             underlying = (
                 st.session_state.get("heston_cboe_ticker")
                 or st.session_state.get("tkr_common")
@@ -2946,8 +2947,6 @@ def run_app_options():
 
 
     def ui_heston_full_pipeline(auto_run: bool = False):
-        st.header("Calibration Heston (Carr–Madan)")
-
         col_cfg1, col_cfg2 = st.columns(2)
         with col_cfg1:
             ticker = st.text_input(
@@ -4236,32 +4235,28 @@ def run_app_options():
             st.caption("Pricing direct avec Carr–Madan (Heston calibré).")
             params_heston = _heston_params_from_state()
             cpflag_heston = option_label
-            if st.button(
-                f"Calculer le prix Heston Carr–Madan ({cpflag_heston})",
-                key=_k("btn_price_heston_cm"),
-            ):
-                try:
-                    price_cm = _carr_madan_price(
-                        S0=float(common_spot_value),
-                        K=float(common_strike_value),
-                        T=float(common_maturity_value),
-                        r=float(common_rate_value),
-                        q=float(d_common),
-                        opt_char=option_char,
-                        params=params_heston,
-                    )
-                    st.success(f"Prix Heston (Carr–Madan) {cpflag_heston} = {price_cm:.6f}")
-                    render_add_to_dashboard_button(
-                        product_label="Vanilla (Heston CM)",
-                        option_char=option_char,
-                        price_value=price_cm,
-                        strike=common_strike_value,
-                        maturity=common_maturity_value,
-                        key_prefix=_k("save_heston_cm"),
-                        spot=common_spot_value,
-                    )
-                except Exception as exc:
-                    st.error(f"Erreur Carr–Madan : {exc}")
+            try:
+                price_cm = _carr_madan_price(
+                    S0=float(common_spot_value),
+                    K=float(common_strike_value),
+                    T=float(common_maturity_value),
+                    r=float(common_rate_value),
+                    q=float(d_common),
+                    opt_char=option_char,
+                    params=params_heston,
+                )
+                st.success(f"Prix Heston (Carr–Madan) {cpflag_heston} = {price_cm:.6f}")
+                render_add_to_dashboard_button(
+                    product_label="Vanilla (Heston CM)",
+                    option_char=option_char,
+                    price_value=price_cm,
+                    strike=common_strike_value,
+                    maturity=common_maturity_value,
+                    key_prefix=_k("save_heston_cm"),
+                    spot=common_spot_value,
+                )
+            except Exception as exc:
+                st.error(f"Erreur Carr–Madan : {exc}")
 
             with st.expander("Visualisations Heston (Carr–Madan)", expanded=False):
                 try:
@@ -4344,30 +4339,26 @@ def run_app_options():
             )
             cpflag_eu_bsm = option_label
             st.caption("Type fixé par l’onglet Call / Put en haut de page.")
-            if st.button(
-                f"Calculer le prix BSM ({cpflag_eu_bsm})",
-                key=_k("btn_price_eu_bsm"),
-            ):
-                opt_type = "call" if option_char == "c" else "put"
-                price_bsm = _vanilla_price_with_dividend(
-                    option_type=opt_type,
-                    S0=common_spot_value,
-                    K=common_strike_value,
-                    T=common_maturity_value,
-                    r=common_rate_value,
-                    dividend=float(d_common),
-                    sigma=common_sigma_value,
-                )
-                st.success(f"Prix BSM ({cpflag_eu_bsm}) = {price_bsm:.6f}")
-                render_add_to_dashboard_button(
-                    product_label="Vanilla (BSM)",
-                    option_char=option_char,
-                    price_value=price_bsm,
-                    strike=common_strike_value,
-                    maturity=common_maturity_value,
-                    key_prefix=_k("save_bsm"),
-                    spot=common_spot_value,
-                )
+            opt_type = "call" if option_char == "c" else "put"
+            price_bsm = _vanilla_price_with_dividend(
+                option_type=opt_type,
+                S0=common_spot_value,
+                K=common_strike_value,
+                T=common_maturity_value,
+                r=common_rate_value,
+                dividend=float(d_common),
+                sigma=common_sigma_value,
+            )
+            st.success(f"Prix BSM ({cpflag_eu_bsm}) = {price_bsm:.6f}")
+            render_add_to_dashboard_button(
+                product_label="Vanilla (BSM)",
+                option_char=option_char,
+                price_value=price_bsm,
+                strike=common_strike_value,
+                maturity=common_maturity_value,
+                key_prefix=_k("save_bsm"),
+                spot=common_spot_value,
+            )
             st.caption(
                 f"Paramètres utilisés pour le prix unique BSM : "
                 f"S0={common_spot_value:.4f}, K={common_strike_value:.4f}, "
