@@ -5719,14 +5719,25 @@ def add_option_to_dashboard(record: dict) -> str:
     entry.setdefault("created_at", now)
     entry["last_updated"] = now
 
-    # Canonical fields for storage
+    # Canonical fields for storage (uniform schema)
     entry["underlying"] = entry.get("underlying") or entry.get("ticker") or entry.get("symbol") or ""
-    entry["product"] = entry.get("product") or entry.get("product_type") or entry.get("structure") or "vanilla"
+    product_val = entry.get("product") or entry.get("product_type") or entry.get("structure") or "vanilla"
+    entry["product"] = product_val
+    entry["product_type"] = product_val
     entry["type"] = entry.get("type") or "vanilla"
+    entry["option_type"] = (
+        entry.get("option_type")
+        or entry.get("cpflag")
+        or entry.get("cp")
+        or ("call" if str(product_val).lower().startswith("call") else "put")
+    )
     entry["side"] = entry.get("side") or "long"
     entry["strike"] = float(entry.get("strike", 0.0) or 0.0)
+    entry["strike2"] = float(entry.get("strike2")) if entry.get("strike2") not in (None, "") else None
     entry["expiration"] = entry.get("expiration")
     entry["quantity"] = float(entry.get("quantity", 0) or 0)
+    entry["S0"] = float(entry.get("S0")) if entry.get("S0") not in (None, "") else None
+    entry["legs"] = entry.get("legs")
 
     t0_price = entry.get("T_0_price")
     if t0_price is None:
@@ -5734,9 +5745,11 @@ def add_option_to_dashboard(record: dict) -> str:
     entry["T_0_price"] = float(t0_price or 0.0)
     entry["avg_price"] = float(entry["T_0_price"])
 
-    # Keep option_type for pricing
-    entry["option_type"] = entry.get("option_type") or entry.get("cpflag") or entry.get("cp") or ("call" if entry.get("product", "").lower() == "call" else "put")
-    entry["misc"] = entry.get("misc", None)
+    misc_val = entry.get("misc")
+    if not isinstance(misc_val, dict):
+        misc_val = None
+    entry["misc"] = misc_val
+
     book[option_id] = entry
     save_options_book(book)
     return option_id
@@ -6545,10 +6558,19 @@ with tab1:
                         option_type_raw = t_val
                 option_type = str(option_type_raw).lower()
                 strike = float(pos.get("strike", 0.0) or 0.0)
+                strike2_val = pos.get("strike2")
+                strike2 = float(strike2_val) if strike2_val not in (None, "") else None
                 quantity = float(pos.get("quantity", 0) or 0)
                 avg_price = float(pos.get("avg_price", 0.0) or 0.0)
                 side = pos.get("side", "long").lower()
-                product = pos.get("product_type") or pos.get("structure") or pos.get("product") or "vanilla"
+                product = (
+                    pos.get("product_type")
+                    or pos.get("structure")
+                    or pos.get("product")
+                    or pos.get("type")
+                    or "vanilla"
+                )
+                misc = pos.get("misc")
 
                 chain_list = chains_by_underlying_custom.get(underlying, [])
                 chain_entry = None
@@ -6598,11 +6620,13 @@ with tab1:
                     "Type": option_type.capitalize(),
                     "Side": side.capitalize(),
                     "Strike": strike,
+                    "Strike2": strike2,
                     "Expiration": pos.get("expiration"),
                     "Quantity": quantity,
                     "T_0 Price": f"${avg_price:.3f}",
                     "Current Price (model)": f"${mark_price:.4f}",
                     "Model P&L": f"${total_pnl_opt:.2f}",
+                    "Misc keys": ", ".join(sorted(misc.keys())) if isinstance(misc, dict) else "",
                 })
 
             if rows_custom:
@@ -6648,26 +6672,30 @@ with tab1:
                         if t_val in {"call", "put"}:
                             option_type_raw = t_val
                     option_type = str(option_type_raw).lower()
+                    strike2_val = pos.get("strike2")
+                    strike2 = float(strike2_val) if strike2_val not in (None, "") else None
+                    misc = pos.get("misc")
                     btn_label = "Close"
                     close_max = max(1, int(qty)) if qty and qty > 0 else 1
-                    close_qty = st.number_input(
-                        "Quantity to close",
-                        min_value=1,
-                        max_value=close_max,
-                        value=close_max,
-                        step=1,
-                        key=f"close_qty_{key}",
-                    )
 
                     with st.expander(f"{key} ({product})"):
                         side_label = side.upper() if side else "N/A"
                         opt_label = option_type.upper() if option_type else "N/A"
                         st.caption(f"Produit reconnu: {product} | Option type: {opt_label} | Side: {side_label}")
+                        close_qty = st.selectbox(
+                            "Quantity to close",
+                            options=list(range(1, close_max + 1)),
+                            index=close_max - 1 if close_max > 0 else 0,
+                            key=f"close_qty_{key}",
+                        )
                         col_a, col_b, col_c = st.columns(3)
                         with col_a:
                             st.metric("Mark (model)", f"${mark_price:.4f}")
                             st.caption(
-                                f"S = {spot:.4f} | K = {strike} | "
+                                f"S = {spot:.4f} | K = {strike}"
+                                + (f" | K2 = {strike2}" if strike2 is not None else "")
+                            )
+                            st.caption(
                                 f"T = {T_years:.4f}" if T_years is not None else "T inconnu"
                             )
                             st.caption(f"Méthode: {method} | σ={sigma_used:.4f}")
@@ -6676,6 +6704,8 @@ with tab1:
                             st.metric("Qty", f"{qty}")
                         with col_c:
                             st.metric("PnL if closed", f"${pnl_total:.2f}", delta=f"{pnl_per_unit:.4f}")
+                        if isinstance(misc, dict) and misc:
+                            st.caption(f"Misc: {misc}")
 
                         if st.button(f"✅ {btn_label}", key=f"close_custom_{key}"):
                             book = load_options_book()

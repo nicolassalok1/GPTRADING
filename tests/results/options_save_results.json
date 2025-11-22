@@ -2,275 +2,111 @@
   {
     "name": "asian_arith",
     "status": "ok",
-    "id": "opt_1763815941124",
-    "misc_keys": [
-      "method",
-      "n_obs",
-      "n_paths"
-    ],
-    "strike": 100.0,
-    "strike2": null,
-    "product_type": "Asian arithm\u00e9tique"
+    "id": "ui_asian_arith_1763816353086"
   },
   {
     "name": "asian_geom",
     "status": "ok",
-    "id": "opt_1763815941125",
-    "misc_keys": [
-      "method",
-      "n_obs"
-    ],
-    "strike": 90.0,
-    "strike2": null,
-    "product_type": "Asian g\u00e9om\u00e9trique"
+    "id": "ui_asian_geom_1763816353087"
   },
   {
     "name": "digital",
     "status": "ok",
-    "id": "opt_1763815941125",
-    "misc_keys": [
-      "payout",
-      "style"
-    ],
-    "strike": 100.0,
-    "strike2": null,
-    "product_type": "Digital (cash-or-nothing)"
+    "id": "ui_digital_1763816353088"
   },
   {
     "name": "asset_or_nothing",
     "status": "ok",
-    "id": "opt_1763815941126",
-    "misc_keys": [
-      "style"
-    ],
-    "strike": 80.0,
-    "strike2": null,
-    "product_type": "Asset-or-nothing"
+    "id": "ui_asset_or_nothing_1763816353088"
   },
   {
     "name": "forward_start",
     "status": "ok",
-    "id": "opt_1763815941127",
-    "misc_keys": [
-      "T_start",
-      "k_factor",
-      "n_paths",
-      "n_steps"
-    ],
-    "strike": 100.0,
-    "strike2": null,
-    "product_type": "Forward-start"
+    "id": "ui_forward_start_1763816353089"
   },
   {
     "name": "chooser",
     "status": "ok",
-    "id": "opt_1763815941127",
-    "misc_keys": [
-      "t_choice"
-    ],
-    "strike": 100.0,
-    "strike2": null,
-    "product_type": "Chooser"
+    "id": "ui_chooser_1763816353090"
   },
   {
     "name": "straddle",
     "status": "ok",
-    "id": "opt_1763815941128",
-    "misc_keys": [],
-    "strike": 100.0,
-    "strike2": null,
-    "product_type": "Straddle"
+    "id": "ui_straddle_1763816353091"
   },
   {
     "name": "strangle",
     "status": "ok",
-    "id": "opt_1763815941129",
-    "misc_keys": [
-      "k_call",
-      "k_put",
-      "wing"
-    ],
-    "strike": 95.0,
-    "strike2": 105,
-    "product_type": "Strangle"
+    "id": "ui_strangle_1763816353092"
   },
   {
     "name": "call_spread",
     "status": "ok",
-    "id": "opt_1763815941130",
-    "misc_keys": [
-      "width"
-    ],
-    "strike": 100.0,
-    "strike2": 105,
-    "product_type": "Call spread"
+    "id": "ui_call_spread_1763816353093"
   },
   {
     "name": "put_spread",
     "status": "ok",
-    "id": "opt_1763815941131",
-    "misc_keys": [
-      "width"
-    ],
-    "strike": 95.0,
-    "strike2": 90,
-    "product_type": "Put spread"
+    "id": "ui_put_spread_1763816353094"
   },
   {
     "name": "butterfly",
     "status": "ok",
-    "id": "opt_1763815941132",
-    "misc_keys": [
-      "wing"
-    ],
-    "strike": 95.0,
-    "strike2": 105,
-    "product_type": "Butterfly"
+    "id": "ui_butterfly_1763816353095"
   },
   {
     "name": "condor",
     "status": "ok",
-    "id": "opt_1763815941133",
-    "misc_keys": [
-      "wing_inner",
-      "wing_outer"
-    ],
-    "strike": 90.0,
-    "strike2": 110,
-    "product_type": "Condor"
+    "id": "ui_condor_1763816353096"
   },
   {
     "name": "iron_bfly",
     "status": "ok",
-    "id": "opt_1763815941134",
-    "misc_keys": [
-      "k_mid",
-      "wing"
-    ],
-    "strike": 95.0,
-    "strike2": 105,
-    "product_type": "Iron Butterfly"
+    "id": "ui_iron_bfly_1763816353098"
   },
   {
     "name": "calendar",
     "status": "ok",
-    "id": "opt_1763815941135",
-    "misc_keys": [
-      "T_long",
-      "T_short",
-      "opt_kind"
-    ],
-    "strike": 100.0,
-    "strike2": null,
-    "product_type": "Calendar spread"
+    "id": "ui_calendar_1763816353099"
   },
   {
     "name": "diagonal",
     "status": "ok",
-    "id": "opt_1763815941137",
-    "misc_keys": [
-      "T_long",
-      "T_short",
-      "k_long",
-      "k_short",
-      "opt_kind"
-    ],
-    "strike": 100.0,
-    "strike2": 105,
-    "product_type": "Diagonal spread"
+    "id": "ui_diagonal_1763816353100"
   },
   {
     "name": "binary_barrier",
     "status": "ok",
-    "id": "opt_1763815941138",
-    "misc_keys": [
-      "barrier_level",
-      "barrier_type",
-      "direction",
-      "n_paths",
-      "n_steps",
-      "payout"
-    ],
-    "strike": 100.0,
-    "strike2": null,
-    "product_type": "Binary barrier up-out"
+    "id": "ui_binary_barrier_1763816353102"
   },
   {
     "name": "barrier_up_out",
     "status": "ok",
-    "id": "opt_1763815941140",
-    "misc_keys": [
-      "barrier_level",
-      "barrier_type",
-      "knock"
-    ],
-    "strike": 100.0,
-    "strike2": null,
-    "product_type": "Barrier up-and-out"
+    "id": "ui_barrier_up_out_1763816353104"
   },
   {
     "name": "barrier_down_out",
     "status": "ok",
-    "id": "opt_1763815941141",
-    "misc_keys": [
-      "barrier_level",
-      "barrier_type",
-      "knock"
-    ],
-    "strike": 100.0,
-    "strike2": null,
-    "product_type": "Barrier down-and-out"
+    "id": "ui_barrier_down_out_1763816353105"
   },
   {
     "name": "barrier_up_in",
     "status": "ok",
-    "id": "opt_1763815941143",
-    "misc_keys": [
-      "barrier_level",
-      "barrier_type",
-      "knock"
-    ],
-    "strike": 100.0,
-    "strike2": null,
-    "product_type": "Barrier up-and-in"
+    "id": "ui_barrier_up_in_1763816353107"
   },
   {
     "name": "barrier_down_in",
     "status": "ok",
-    "id": "opt_1763815941145",
-    "misc_keys": [
-      "barrier_level",
-      "barrier_type",
-      "knock"
-    ],
-    "strike": 100.0,
-    "strike2": null,
-    "product_type": "Barrier down-and-in"
+    "id": "ui_barrier_down_in_1763816353109"
   },
   {
     "name": "lookback_fixed",
     "status": "ok",
-    "id": "opt_1763815941146",
-    "misc_keys": [
-      "n_paths",
-      "n_steps"
-    ],
-    "strike": 100.0,
-    "strike2": null,
-    "product_type": "Lookback fixed"
+    "id": "ui_lookback_fixed_1763816353111"
   },
   {
     "name": "cliquet",
     "status": "ok",
-    "id": "opt_1763815941149",
-    "misc_keys": [
-      "cap",
-      "floor",
-      "n_paths",
-      "n_periods"
-    ],
-    "strike": 100.0,
-    "strike2": null,
-    "product_type": "Cliquet / Ratchet"
+    "id": "ui_cliquet_1763816353113"
   }
 ]
