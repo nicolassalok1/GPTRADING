@@ -10,7 +10,7 @@ import pandas as pd
 import requests
 import datetime
 import math
-from rates_utils import get_r
+from rates_utils import get_r, get_q
 
 # Configuration
 APP_DIR = Path(__file__).resolve().parent
@@ -3695,8 +3695,8 @@ def run_app_options():
                             {"option_type": "call", "strike": k_call},
                         ],
                         misc={
-                            "k_put": k_put,
-                            "k_call": k_call,
+                            "strike_put": k_put,
+                            "strike_call": k_call,
                             "wing": wing,
                         },
                     )
@@ -5672,6 +5672,7 @@ def mark_option_market_value(option: dict, chain_entry: dict | None = None) -> t
     sigma = float(option.get("sigma", 0.2) or 0.2)
     option_type = (option.get("option_type") or option.get("type") or "").lower()
     strike = float(option.get("strike", 0.0) or 0.0)
+    q_val = 0.0
 
     T_years = None
     try:
@@ -5681,6 +5682,11 @@ def mark_option_market_value(option: dict, chain_entry: dict | None = None) -> t
     except Exception:
         T_years = None
 
+    try:
+        q_val = float(get_q(underlying) or 0.0) if underlying else 0.0
+    except Exception:
+        q_val = 0.0
+
     if chain_entry:
         spot = float(chain_entry.get("spot", spot) or spot)
         sigma = float(chain_entry.get("iv", sigma) or sigma)
@@ -5689,13 +5695,18 @@ def mark_option_market_value(option: dict, chain_entry: dict | None = None) -> t
     mark_price = None
     method = "intrinsic"
     if spot > 0 and strike > 0 and T_years is not None and option_type in {"call", "put"}:
+        try:
+            r_val = float(get_r(T_years) or 0.0)
+        except Exception:
+            r_val = 0.0
         mark_price = black_scholes_price(
             S=spot,
             K=strike,
             T=T_years,
-            r=0.0,
+            r=r_val,
             sigma=max(sigma, 1e-6),
             option_type=option_type,
+            q=q_val,
         )
         method = "BSM (CBOE IV)" if chain_entry else "BSM"
 
@@ -5719,6 +5730,9 @@ def add_option_to_dashboard(record: dict) -> str:
     entry.setdefault("created_at", now)
     entry["last_updated"] = now
 
+    def _f(val):
+        return float(val) if val not in (None, "") else None
+
     # Canonical fields for storage (uniform schema)
     entry["underlying"] = entry.get("underlying") or entry.get("ticker") or entry.get("symbol") or ""
     product_val = entry.get("product") or entry.get("product_type") or entry.get("structure") or "vanilla"
@@ -5732,22 +5746,35 @@ def add_option_to_dashboard(record: dict) -> str:
         or ("call" if str(product_val).lower().startswith("call") else "put")
     )
     entry["side"] = entry.get("side") or "long"
-    entry["strike"] = float(entry.get("strike", 0.0) or 0.0)
-    entry["strike2"] = float(entry.get("strike2")) if entry.get("strike2") not in (None, "") else None
-    entry["expiration"] = entry.get("expiration")
-    entry["quantity"] = float(entry.get("quantity", 0) or 0)
-    entry["S0"] = float(entry.get("S0")) if entry.get("S0") not in (None, "") else None
+    entry["strike"] = _f(entry.get("strike"))
+    entry["strike2"] = _f(entry.get("strike2"))
+    entry["expiration"] = entry.get("expiration") or None
+    entry["quantity"] = _f(entry.get("quantity"))
+    entry["S0"] = _f(entry.get("S0"))
     entry["legs"] = entry.get("legs")
 
     t0_price = entry.get("T_0_price")
     if t0_price is None:
         t0_price = entry.get("avg_price", entry.get("price"))
-    entry["T_0_price"] = float(t0_price or 0.0)
-    entry["avg_price"] = float(entry["T_0_price"])
+    entry["T_0_price"] = _f(t0_price)
+    entry["avg_price"] = _f(entry["T_0_price"])
 
     misc_val = entry.get("misc")
     if not isinstance(misc_val, dict):
         misc_val = None
+    # Normalization for misc keys
+    if isinstance(misc_val, dict) and "product" in entry and "strangle" in str(entry["product"]).lower():
+        # rename legacy keys
+        if "k_call" in misc_val:
+            misc_val["strike_call"] = misc_val.pop("k_call")
+        if "k_put" in misc_val:
+            misc_val["strike_put"] = misc_val.pop("k_put")
+    if isinstance(misc_val, dict) and "product" in entry and "barrier" in str(entry["product"]).lower():
+        # ensure knock/direction are both populated for barrier structures
+        if "knock" not in misc_val and "direction" in misc_val:
+            misc_val["knock"] = misc_val["direction"]
+        if "direction" not in misc_val and "knock" in misc_val:
+            misc_val["direction"] = misc_val["knock"]
     entry["misc"] = misc_val
 
     book[option_id] = entry
@@ -6109,7 +6136,7 @@ def norm_cdf(x: float) -> float:
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
 
-def black_scholes_price(S: float, K: float, T: float, r: float, sigma: float, option_type: str) -> float:
+def black_scholes_price(S: float, K: float, T: float, r: float, sigma: float, option_type: str, q: float = 0.0) -> float:
     """
     Black-Scholes price for a European option.
     option_type: "call" or "put"
@@ -6120,13 +6147,14 @@ def black_scholes_price(S: float, K: float, T: float, r: float, sigma: float, op
         else:
             return max(K - S, 0.0)
 
-    d1 = (math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * math.sqrt(T))
+    r_eff = float(r) - float(q or 0.0)
+    d1 = (math.log(S / K) + (r_eff + 0.5 * sigma * sigma) * T) / (sigma * math.sqrt(T))
     d2 = d1 - sigma * math.sqrt(T)
 
     if option_type == "call":
-        return S * norm_cdf(d1) - K * math.exp(-r * T) * norm_cdf(d2)
+        return S * math.exp(-q * T) * norm_cdf(d1) - K * math.exp(-r * T) * norm_cdf(d2)
     else:
-        return K * math.exp(-r * T) * norm_cdf(-d2) - S * norm_cdf(-d1)
+        return K * math.exp(-r * T) * norm_cdf(-d2) - S * math.exp(-q * T) * norm_cdf(-d1)
 
 
 def get_underlying_close_on_date(symbol: str, date: datetime.date) -> float:
@@ -6545,7 +6573,7 @@ with tab1:
             def _pricing_metadata(prod: str) -> tuple[str, list[str]]:
                 prod_low = (prod or "").lower()
                 if "barrier" in prod_low:
-                    return "barrier_pricer", ["option_type", "barrier_type/knock/direction", "barrier_level", "strike", "expiration", "sigma", "S0", "r", "q"]
+                    return "barrier_pricer", ["option_type", "barrier_type", "knock", "direction", "barrier_level", "strike", "expiration", "sigma", "S0", "r", "q"]
                 if "asian" in prod_low:
                     return "asian_pricer", ["option_type", "strike", "expiration", "sigma", "S0", "r", "q", "n_obs"]
                 if "digital" in prod_low:
@@ -6701,6 +6729,7 @@ with tab1:
                     strike2 = float(strike2_val) if strike2_val not in (None, "") else None
                     misc = pos.get("misc")
                     pricing_fn, needed = _pricing_metadata(product)
+                    product_low = product.lower() if product else ""
                     available = set(k for k in [
                         "option_type",
                         "strike" if strike is not None else None,
@@ -6709,10 +6738,17 @@ with tab1:
                         "quantity" if qty else None,
                         "sigma" if sigma_used else None,
                         "S0" if spot else None,
-                        "legs" if pos.get("legs") else None,
+                        "legs (strike/side/type)" if pos.get("legs") else None,
                     ] if k)
+                    # We can compute r/q from rates_utils
+                    available.update({"r", "q"})
+                    # For spreads/structures without explicit legs, consider strike/strike2 as leg info
+                    if any(keyword in product_low for keyword in ["spread", "butterfly", "condor", "straddle", "strangle"]):
+                        available.add("legs (strike/side/type)")
                     if isinstance(misc, dict):
                         available.update(misc.keys())
+                        if "barrier" in product_low and "knock" in misc and "direction" not in available:
+                            available.add("direction")
                     missing = set(needed) - available
                     extra = available - set(needed)
                     btn_label = "Close"
@@ -6730,7 +6766,7 @@ with tab1:
                         )
                         col_a, col_b, col_c = st.columns(3)
                         with col_a:
-                            st.metric("Mark (model)", f"${mark_price:.4f}")
+                            st.metric("Prix actuel", f"${mark_price:.4f}")
                             st.caption(
                                 f"S = {spot:.4f} | K = {strike}"
                                 + (f" | K2 = {strike2}" if strike2 is not None else "")

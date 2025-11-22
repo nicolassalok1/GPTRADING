@@ -104,11 +104,12 @@ class OptionsSaveTests(unittest.TestCase):
                 "quantity": 3,
                 "avg_price": 3.0,
                 "side": "long",
-                "misc": {"k_put": 95, "k_call": 105, "wing": 10},
+                "misc": {"strike_put": 95, "strike_call": 105, "wing": 10},
             }
         )
         self.assertEqual(entry["misc"]["wing"], 10)
-        self.assertEqual(entry["misc"]["k_call"], 105)
+        self.assertEqual(entry["misc"]["strike_call"], 105)
+        self.assertEqual(entry["misc"]["strike_put"], 95)
         self.assertEqual(entry["strike2"], 105.0)
 
     def test_calendar_misc_saved(self):

@@ -176,9 +176,9 @@
     "strike": 95.0,
     "strike2": 105.0,
     "misc": {
-      "k_put": 95,
-      "k_call": 105,
-      "wing": 10
+      "wing": 10,
+      "strike_call": 105,
+      "strike_put": 95
     },
     "id": "ui_strangle_1763816353092",
     "status": "open",
@@ -374,7 +374,8 @@
       "barrier_level": 110,
       "payout": 1.0,
       "n_paths": 5000,
-      "n_steps": 200
+      "n_steps": 200,
+      "knock": "out"
     },
     "id": "ui_binary_barrier_1763816353102",
     "status": "open",
@@ -399,7 +400,8 @@
     "misc": {
       "barrier_type": "up",
       "knock": "out",
-      "barrier_level": 110
+      "barrier_level": 110,
+      "direction": "out"
     },
     "id": "ui_barrier_up_out_1763816353104",
     "status": "open",
@@ -424,7 +426,8 @@
     "misc": {
       "barrier_type": "down",
       "knock": "out",
-      "barrier_level": 90
+      "barrier_level": 90,
+      "direction": "out"
     },
     "id": "ui_barrier_down_out_1763816353105",
     "status": "open",
@@ -449,7 +452,8 @@
     "misc": {
       "barrier_type": "up",
       "knock": "in",
-      "barrier_level": 110
+      "barrier_level": 110,
+      "direction": "in"
     },
     "id": "ui_barrier_up_in_1763816353107",
     "status": "open",
@@ -474,7 +478,8 @@
     "misc": {
       "barrier_type": "down",
       "knock": "in",
-      "barrier_level": 90
+      "barrier_level": 90,
+      "direction": "in"
     },
     "id": "ui_barrier_down_in_1763816353109",
     "status": "open",

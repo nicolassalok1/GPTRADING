@@ -108,7 +108,7 @@ def build_payloads():
             "option_type": "call",
             "strike": 95,
             "strike2": 105,
-            "misc": {"k_put": 95, "k_call": 105, "wing": 10},
+            "misc": {"strike_put": 95, "strike_call": 105, "wing": 10},
         },
         "call_spread": {
             **common,

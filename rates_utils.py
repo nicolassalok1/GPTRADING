@@ -11,6 +11,7 @@ import os
 import time
 import math
 import subprocess
+import sys
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -93,10 +94,12 @@ def get_r(maturity_years: float) -> float:
 
     T = float(maturity_years)
     if len(points) == 1:
-        return float(rates[0])
+        val = float(rates[0])
+        return val if math.isfinite(val) and val > 0 else DEFAULT_RF
     # Clamp to available range then linear interpolation
     T_clamped = np.clip(T, maturities.min(), maturities.max())
-    return float(np.interp(T_clamped, maturities, rates))
+    val = float(np.interp(T_clamped, maturities, rates))
+    return val if math.isfinite(val) and val > 0 else DEFAULT_RF
 
 
 def get_q(ticker: str) -> float:
