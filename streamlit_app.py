@@ -4176,14 +4176,7 @@ def run_app_options():
             ) = st.tabs(["Asian", "Asian géométrique", "Lookback", "Lookback fixed", "Forward-start", "Cliquet / Ratchet"])
 
         with tab_grp_barrier:
-            barrier_run_flag = st.session_state.get(_k("run_barrier_done"), False)
-            if not barrier_run_flag:
-                if st.button("🚀 Lancer tous les pricings Barrière", key=_k("run_barrier_btn"), type="primary"):
-                    st.session_state[_k("run_barrier_done")] = True
-                    st.rerun()
-                st.info("Clique sur le bouton pour afficher les onglets Barrière / Binary barrière et lancer les calculs.")
-            else:
-                tab_barrier, tab_binary_barrier = st.tabs(["Barrière", "Binary barrière"])
+            tab_barrier, tab_binary_barrier = st.tabs(["Barrière", "Binary barrière"])
 
         with tab_grp_spreads:
             (
