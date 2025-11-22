@@ -7,6 +7,7 @@ from pathlib import Path
 import time
 import re
 import base64
+import datetime
 
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
@@ -49,6 +50,70 @@ PLOTLY_CONFIG = {
     "displaylogo": False,
     "modeBarButtonsToRemove": ["sendDataToCloud"],
 }
+
+
+def render_add_to_dashboard_button(
+    product_label: str,
+    option_char: str,
+    price_value: float,
+    strike: float | None,
+    maturity: float | None,
+    key_prefix: str,
+    *,
+    strike2: float | None = None,
+    spot: float | None = None,
+    legs: list[dict] | None = None,
+) -> None:
+    """Small UI helper to push a priced structure into the dashboard JSON."""
+    if "add_option_to_dashboard" not in globals():
+        st.info("Ajout au dashboard indisponible (fonction manquante).")
+        return
+
+    with st.expander(f"📥 Ajouter au dashboard ({product_label})", expanded=False):
+        underlying = (
+            st.session_state.get("heston_cboe_ticker")
+            or st.session_state.get("tkr_common")
+            or st.session_state.get("common_underlying")
+            or st.session_state.get("ticker_default")
+            or ""
+        ).strip().upper()
+        st.caption(f"Sous-jacent: {underlying or 'N/A'} (reprise de l’entête)")
+        expiry_guess = datetime.date.today() + datetime.timedelta(
+            days=int((maturity or 0.0) * 365)
+        )
+        expiration = st.date_input(
+            "Expiration",
+            value=expiry_guess,
+            key=f"{key_prefix}_exp",
+        )
+        qty = st.number_input("Quantité", min_value=1, value=1, step=1, key=f"{key_prefix}_qty")
+        side = st.selectbox("Sens", ["long", "short"], index=0, key=f"{key_prefix}_side")
+        strike_val = float(strike if strike is not None else st.session_state.get("common_strike", 0.0))
+        strike2_val = float(strike2) if strike2 is not None else None
+        st.caption(
+            f"K (strike commun): {strike_val:.4f}"
+            + (f" | K2: {strike2_val:.4f}" if strike2_val is not None else "")
+        )
+        if maturity is not None:
+            st.caption(f"T (maturité commune, années): {float(maturity):.4f}")
+
+        if st.button("Ajouter au dashboard", key=f"{key_prefix}_add"):
+            payload = {
+                "underlying": underlying or "N/A",
+                "option_type": "call" if option_char.lower() == "c" else "put",
+                "product_type": product_label,
+                "strike": float(strike_val),
+                "strike2": float(strike2_val) if strike2_val is not None else None,
+                "expiration": expiration.isoformat(),
+                "quantity": int(qty),
+                "avg_price": float(price_value),
+                "side": side,
+                "S0": float(spot or 0.0),
+                "maturity_years": maturity,
+                "legs": legs,
+            }
+            add_option_to_dashboard(payload)
+            st.success(f"{product_label} ajouté au dashboard.")
 
 
 def simulate_gbm_paths(S0, r, q, sigma, T, M, N_paths, seed=42):
@@ -2309,6 +2374,15 @@ def ui_asian_options(
             )
             progress.progress(100)
             st.success(f"Prix call asiatique arithmétique (MC + control variate) = {price_asian_call:.6f}")
+            render_add_to_dashboard_button(
+                product_label="Asian arithmétique",
+                option_char=option_char,
+                price_value=price_asian_call,
+                strike=strike_common_local,
+                maturity=maturity_common,
+                key_prefix=_k("save_asian_arith"),
+                spot=spot_common,
+            )
         except Exception as exc:
             st.error(f"Erreur lors du pricing asiatique : {exc}")
         finally:
@@ -3416,6 +3490,15 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                     payout=payout,
                 )
                 st.success(f"Prix digital ({option_label}) = {price:.6f}")
+                render_add_to_dashboard_button(
+                    product_label="Digital (cash-or-nothing)",
+                    option_char=option_char,
+                    price_value=price,
+                    strike=common_strike_value,
+                    maturity=common_maturity_value,
+                    key_prefix=kk("save_digital"),
+                    spot=common_spot_value,
+                )
             return
 
         if structure_name == "Asset-or-nothing":
@@ -3430,6 +3513,15 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                     sigma=common_sigma_value,
                 )
                 st.success(f"Prix asset-or-nothing ({option_label}) = {price:.6f}")
+                render_add_to_dashboard_button(
+                    product_label="Asset-or-nothing",
+                    option_char=option_char,
+                    price_value=price,
+                    strike=common_strike_value,
+                    maturity=common_maturity_value,
+                    key_prefix=kk("save_asset_on"),
+                    spot=common_spot_value,
+                )
             return
 
         if structure_name == "Forward-start option":
@@ -3451,6 +3543,15 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                     option_type=option_char,
                 )
                 st.success(f"Prix forward-start ({option_label}) = {price:.6f}")
+                render_add_to_dashboard_button(
+                    product_label="Forward-start",
+                    option_char=option_char,
+                    price_value=price,
+                    strike=common_strike_value,
+                    maturity=common_maturity_value,
+                    key_prefix=kk("save_forward_start"),
+                    spot=common_spot_value,
+                )
             return
 
         if structure_name == "Chooser option":
@@ -3466,12 +3567,34 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                     sigma=common_sigma_value,
                 )
                 st.success(f"Prix chooser = {price:.6f}")
+                render_add_to_dashboard_button(
+                    product_label="Chooser",
+                    option_char=option_char,
+                    price_value=price,
+                    strike=common_strike_value,
+                    maturity=common_maturity_value,
+                    key_prefix=kk("save_chooser"),
+                    spot=common_spot_value,
+                )
             return
 
         if structure_name == "Straddle":
             if st.button("Pricer le straddle", key=kk("btn")):
                 price = _vanilla_price_with_dividend("call", common_spot_value, common_strike_value, common_maturity_value, common_rate_value, float(d_common), common_sigma_value) + _vanilla_price_with_dividend("put", common_spot_value, common_strike_value, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
                 st.success(f"Prix straddle (K={common_strike_value:.2f}) = {price:.6f}")
+                render_add_to_dashboard_button(
+                    product_label="Straddle",
+                    option_char=option_char,
+                    price_value=price,
+                    strike=common_strike_value,
+                    maturity=common_maturity_value,
+                    key_prefix=kk("save_straddle"),
+                    spot=common_spot_value,
+                    legs=[
+                        {"option_type": "call", "strike": common_strike_value},
+                        {"option_type": "put", "strike": common_strike_value},
+                    ],
+                )
             return
 
         if structure_name == "Strangle":
@@ -3481,6 +3604,20 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                 k_call = common_strike_value + wing
                 price = _vanilla_price_with_dividend("put", common_spot_value, k_put, common_maturity_value, common_rate_value, float(d_common), common_sigma_value) + _vanilla_price_with_dividend("call", common_spot_value, k_call, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
                 st.success(f"Prix strangle (Put {k_put:.2f} / Call {k_call:.2f}) = {price:.6f}")
+                render_add_to_dashboard_button(
+                    product_label="Strangle",
+                    option_char=option_char,
+                    price_value=price,
+                    strike=k_put,
+                    strike2=k_call,
+                    maturity=common_maturity_value,
+                    key_prefix=kk("save_strangle"),
+                    spot=common_spot_value,
+                    legs=[
+                        {"option_type": "put", "strike": k_put},
+                        {"option_type": "call", "strike": k_call},
+                    ],
+                )
             return
 
         if structure_name == "Call spread":
@@ -3490,6 +3627,20 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                 k_short = common_strike_value + width
                 price = _vanilla_price_with_dividend("call", common_spot_value, k_long, common_maturity_value, common_rate_value, float(d_common), common_sigma_value) - _vanilla_price_with_dividend("call", common_spot_value, k_short, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
                 st.success(f"Prix call spread (long {k_long:.2f}, short {k_short:.2f}) = {price:.6f}")
+                render_add_to_dashboard_button(
+                    product_label="Call spread",
+                    option_char=option_char,
+                    price_value=price,
+                    strike=k_long,
+                    strike2=k_short,
+                    maturity=common_maturity_value,
+                    key_prefix=kk("save_call_spread"),
+                    spot=common_spot_value,
+                    legs=[
+                        {"option_type": "call", "strike": k_long, "side": "long"},
+                        {"option_type": "call", "strike": k_short, "side": "short"},
+                    ],
+                )
             return
 
         if structure_name == "Put spread":
@@ -3499,6 +3650,20 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                 k_long = common_strike_value
                 price = _vanilla_price_with_dividend("put", common_spot_value, k_long, common_maturity_value, common_rate_value, float(d_common), common_sigma_value) - _vanilla_price_with_dividend("put", common_spot_value, k_short, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
                 st.success(f"Prix put spread (long {k_long:.2f}, short {k_short:.2f}) = {price:.6f}")
+                render_add_to_dashboard_button(
+                    product_label="Put spread",
+                    option_char=option_char,
+                    price_value=price,
+                    strike=k_long,
+                    strike2=k_short,
+                    maturity=common_maturity_value,
+                    key_prefix=kk("save_put_spread"),
+                    spot=common_spot_value,
+                    legs=[
+                        {"option_type": "put", "strike": k_long, "side": "long"},
+                        {"option_type": "put", "strike": k_short, "side": "short"},
+                    ],
+                )
             return
 
         if structure_name == "Butterfly":
@@ -3513,6 +3678,21 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                     + _vanilla_price_with_dividend("call", common_spot_value, k3, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
                 )
                 st.success(f"Prix butterfly (K1={k1:.2f}, K2={k2:.2f}, K3={k3:.2f}) = {price:.6f}")
+                render_add_to_dashboard_button(
+                    product_label="Butterfly",
+                    option_char=option_char,
+                    price_value=price,
+                    strike=k1,
+                    strike2=k3,
+                    maturity=common_maturity_value,
+                    key_prefix=kk("save_bfly"),
+                    spot=common_spot_value,
+                    legs=[
+                        {"option_type": "call", "strike": k1, "side": "long"},
+                        {"option_type": "call", "strike": k2, "side": "short", "qty": 2},
+                        {"option_type": "call", "strike": k3, "side": "long"},
+                    ],
+                )
             return
 
         if structure_name == "Condor":
@@ -3530,6 +3710,22 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                     + _vanilla_price_with_dividend("call", common_spot_value, K4, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
                 )
                 st.success(f"Prix condor (K1={K1:.2f}, K2={K2:.2f}, K3={K3:.2f}, K4={K4:.2f}) = {price:.6f}")
+                render_add_to_dashboard_button(
+                    product_label="Condor",
+                    option_char=option_char,
+                    price_value=price,
+                    strike=K1,
+                    strike2=K4,
+                    maturity=common_maturity_value,
+                    key_prefix=kk("save_condor"),
+                    spot=common_spot_value,
+                    legs=[
+                        {"option_type": "call", "strike": K1, "side": "long"},
+                        {"option_type": "call", "strike": K2, "side": "short"},
+                        {"option_type": "call", "strike": K3, "side": "short"},
+                        {"option_type": "call", "strike": K4, "side": "long"},
+                    ],
+                )
             return
 
         if structure_name == "Iron Butterfly":
@@ -3545,6 +3741,22 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                     + _vanilla_price_with_dividend("call", common_spot_value, K_high, common_maturity_value, common_rate_value, float(d_common), common_sigma_value)
                 )
                 st.success(f"Prix iron butterfly (K={K_low:.2f}/{K_mid:.2f}/{K_high:.2f}) = {price:.6f}")
+                render_add_to_dashboard_button(
+                    product_label="Iron Butterfly",
+                    option_char=option_char,
+                    price_value=price,
+                    strike=K_low,
+                    strike2=K_high,
+                    maturity=common_maturity_value,
+                    key_prefix=kk("save_iron_bfly"),
+                    spot=common_spot_value,
+                    legs=[
+                        {"option_type": "put", "strike": K_low, "side": "long"},
+                        {"option_type": "put", "strike": K_mid, "side": "short"},
+                        {"option_type": "call", "strike": K_mid, "side": "short"},
+                        {"option_type": "call", "strike": K_high, "side": "long"},
+                    ],
+                )
             return
 
         if structure_name == "Calendar spread":
@@ -3555,6 +3767,19 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                 long_leg = _vanilla_price_with_dividend(opt_kind, common_spot_value, common_strike_value, T_long, common_rate_value, float(d_common), common_sigma_value)
                 short_leg = _vanilla_price_with_dividend(opt_kind, common_spot_value, common_strike_value, T_short, common_rate_value, float(d_common), common_sigma_value)
                 st.success(f"Prix calendar ({opt_kind}) = {long_leg - short_leg:.6f}")
+                render_add_to_dashboard_button(
+                    product_label="Calendar spread",
+                    option_char=option_char,
+                    price_value=long_leg - short_leg,
+                    strike=common_strike_value,
+                    maturity=T_long,
+                    key_prefix=kk("save_calendar"),
+                    spot=common_spot_value,
+                    legs=[
+                        {"option_type": opt_kind, "strike": common_strike_value, "side": "long", "tenor": T_long},
+                        {"option_type": opt_kind, "strike": common_strike_value, "side": "short", "tenor": T_short},
+                    ],
+                )
             return
 
         if structure_name == "Diagonal spread":
@@ -3567,6 +3792,20 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                 long_leg = _vanilla_price_with_dividend(opt_kind, common_spot_value, k_long, T_long, common_rate_value, float(d_common), common_sigma_value)
                 short_leg = _vanilla_price_with_dividend(opt_kind, common_spot_value, k_short, T_short, common_rate_value, float(d_common), common_sigma_value)
                 st.success(f"Prix diagonal ({opt_kind}) = {long_leg - short_leg:.6f}")
+                render_add_to_dashboard_button(
+                    product_label="Diagonal spread",
+                    option_char=option_char,
+                    price_value=long_leg - short_leg,
+                    strike=k_short,
+                    strike2=k_long,
+                    maturity=T_long,
+                    key_prefix=kk("save_diagonal"),
+                    spot=common_spot_value,
+                    legs=[
+                        {"option_type": opt_kind, "strike": k_long, "side": "long", "tenor": T_long},
+                        {"option_type": opt_kind, "strike": k_short, "side": "short", "tenor": T_short},
+                    ],
+                )
             return
 
         if structure_name == "Binary barrier (digital)":
@@ -3594,6 +3833,16 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                     n_steps=int(n_steps_bb),
                 )
                 st.success(f"Prix binary barrière = {price:.6f}")
+                render_add_to_dashboard_button(
+                    product_label=f"Binary barrier {barrier_type}-{direction}",
+                    option_char=option_char,
+                    price_value=price,
+                    strike=common_strike_value,
+                    maturity=common_maturity_value,
+                    key_prefix=kk("save_binary_barrier"),
+                    spot=common_spot_value,
+                    legs=[{"option_type": option_char, "strike": common_strike_value, "barrier": barrier_level}],
+                )
             return
 
         if structure_name == "Asian géométrique":
@@ -3609,6 +3858,15 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                     option_type="call" if option_char == "c" else "put",
                 )
                 st.success(f"Prix asian géométrique ({option_label}) = {price:.6f}")
+                render_add_to_dashboard_button(
+                    product_label="Asian géométrique",
+                    option_char=option_char,
+                    price_value=price,
+                    strike=common_strike_value,
+                    maturity=common_maturity_value,
+                    key_prefix=kk("save_asian_geo"),
+                    spot=common_spot_value,
+                )
             return
 
         if structure_name == "Lookback fixed (MC)":
@@ -3635,6 +3893,15 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                     payoffs.append(payoff)
                 price = disc * float(np.mean(payoffs)) if payoffs else 0.0
                 st.success(f"Prix lookback fixed ({option_label}) = {price:.6f}")
+                render_add_to_dashboard_button(
+                    product_label="Lookback fixed",
+                    option_char=option_char,
+                    price_value=price,
+                    strike=common_strike_value,
+                    maturity=common_maturity_value,
+                    key_prefix=kk("save_lookback"),
+                    spot=common_spot_value,
+                )
             return
 
         if structure_name == "Cliquet / Ratchet (MC)":
@@ -3655,6 +3922,15 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                     n_paths=int(n_paths_cliq),
                 )
                 st.success(f"Prix cliquet/ratchet ≈ {price:.6f}")
+                render_add_to_dashboard_button(
+                    product_label="Cliquet / Ratchet",
+                    option_char=option_char,
+                    price_value=price,
+                    strike=common_strike_value,
+                    maturity=common_maturity_value,
+                    key_prefix=kk("save_cliquet"),
+                    spot=common_spot_value,
+                )
             return
 
         if structure_name == "Quanto option":

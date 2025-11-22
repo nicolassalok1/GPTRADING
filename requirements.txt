@@ -14,3 +14,4 @@ openai
 alpaca-trade-api
 alpha_vantage==2.3.1
 python-dotenv
+datetime
