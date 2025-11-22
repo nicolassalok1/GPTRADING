@@ -4209,6 +4209,43 @@ def run_app_options():
                 ),
             )
 
+            eu_run_flag = st.session_state.get("eu_autorun_done", False)
+            if not eu_run_flag:
+                if st.button("🚀 Lancer tous les pricings Euro", key=_k("run_all_euro"), type="primary"):
+                    try:
+                        # Pré-calcul BSM
+                        opt_type_pre = "call" if option_char == "c" else "put"
+                        price_bsm_pre = _vanilla_price_with_dividend(
+                            option_type=opt_type_pre,
+                            S0=common_spot_value,
+                            K=common_strike_value,
+                            T=common_maturity_value,
+                            r=common_rate_value,
+                            dividend=float(d_common),
+                            sigma=common_sigma_value,
+                        )
+                        st.session_state["eu_price_bsm"] = price_bsm_pre
+                        # Pré-calcul Heston CM
+                        params_heston_pre = _heston_params_from_state()
+                        price_cm_pre = _carr_madan_price(
+                            S0=float(common_spot_value),
+                            K=float(common_strike_value),
+                            T=float(common_maturity_value),
+                            r=float(common_rate_value),
+                            q=float(d_common),
+                            opt_char=option_char,
+                            params=params_heston_pre,
+                        )
+                        st.session_state["eu_price_heston"] = price_cm_pre
+                    except Exception:
+                        pass
+                    st.session_state["eu_autorun_done"] = True
+                    st.rerun()
+                st.info("Clique sur le bouton pour afficher immédiatement les prix et les dropdowns d’ajout.")
+            if not eu_run_flag:
+                # Ne pas afficher le reste tant que le bouton n'a pas été cliqué
+                st.stop()
+
             st.subheader("Heston (référence)")
             render_method_explainer(
                 "🧮 Méthode Heston pour les options européennes",
@@ -4236,18 +4273,25 @@ def run_app_options():
 
             st.caption("Pricing direct avec Carr–Madan (Heston calibré).")
             with st.expander(f"📈 Prix Heston Carr–Madan ({option_label})", expanded=False):
-                params_heston = _heston_params_from_state()
-                try:
-                    with st.spinner("Calcul Heston Carr–Madan..."):
-                        price_cm = _carr_madan_price(
-                            S0=float(common_spot_value),
-                            K=float(common_strike_value),
-                            T=float(common_maturity_value),
-                            r=float(common_rate_value),
-                            q=float(d_common),
-                            opt_char=option_char,
-                            params=params_heston,
-                        )
+                price_cm = st.session_state.get("eu_price_heston")
+                if price_cm is None:
+                    params_heston = _heston_params_from_state()
+                    try:
+                        with st.spinner("Calcul Heston Carr–Madan..."):
+                            price_cm = _carr_madan_price(
+                                S0=float(common_spot_value),
+                                K=float(common_strike_value),
+                                T=float(common_maturity_value),
+                                r=float(common_rate_value),
+                                q=float(d_common),
+                                opt_char=option_char,
+                                params=params_heston,
+                            )
+                        st.session_state["eu_price_heston"] = price_cm
+                    except Exception as exc:
+                        st.error(f"Erreur Carr–Madan : {exc}")
+                        price_cm = None
+                if price_cm is not None:
                     st.success(f"Prix Heston (Carr–Madan) {option_label} = {price_cm:.6f}")
                     render_add_to_dashboard_button(
                         product_label="Vanilla (Heston CM)",
@@ -4258,8 +4302,6 @@ def run_app_options():
                         key_prefix=_k("save_heston_cm"),
                         spot=common_spot_value,
                     )
-                except Exception as exc:
-                    st.error(f"Erreur Carr–Madan : {exc}")
 
             with st.expander("Visualisations Heston (Carr–Madan)", expanded=False):
                 try:
@@ -4343,17 +4385,20 @@ def run_app_options():
             cpflag_eu_bsm = option_label
             st.caption("Type fixé par l’onglet Call / Put en haut de page.")
             with st.expander(f"📈 Prix BSM ({cpflag_eu_bsm})", expanded=False):
-                with st.spinner("Calcul BSM..."):
-                    opt_type = "call" if option_char == "c" else "put"
-                    price_bsm = _vanilla_price_with_dividend(
-                        option_type=opt_type,
-                        S0=common_spot_value,
-                        K=common_strike_value,
-                        T=common_maturity_value,
-                        r=common_rate_value,
-                        dividend=float(d_common),
-                        sigma=common_sigma_value,
-                    )
+                price_bsm = st.session_state.get("eu_price_bsm")
+                if price_bsm is None:
+                    with st.spinner("Calcul BSM..."):
+                        opt_type = "call" if option_char == "c" else "put"
+                        price_bsm = _vanilla_price_with_dividend(
+                            option_type=opt_type,
+                            S0=common_spot_value,
+                            K=common_strike_value,
+                            T=common_maturity_value,
+                            r=common_rate_value,
+                            dividend=float(d_common),
+                            sigma=common_sigma_value,
+                        )
+                    st.session_state["eu_price_bsm"] = price_bsm
                 st.success(f"Prix BSM ({cpflag_eu_bsm}) = {price_bsm:.6f}")
                 render_add_to_dashboard_button(
                     product_label="Vanilla (BSM)",
