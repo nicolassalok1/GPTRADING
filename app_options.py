@@ -78,14 +78,8 @@ def render_add_to_dashboard_button(
             or ""
         ).strip().upper()
         st.caption(f"Sous-jacent: {underlying or 'N/A'} (reprise de l’entête)")
-        expiry_guess = datetime.date.today() + datetime.timedelta(
-            days=int((maturity or 0.0) * 365)
-        )
-        expiration = st.date_input(
-            "Expiration",
-            value=expiry_guess,
-            key=f"{key_prefix}_exp",
-        )
+        today = datetime.date.today()
+        expiration_dt = today + datetime.timedelta(days=int((maturity or 0.0) * 365))
         qty = st.number_input("Quantité", min_value=1, value=1, step=1, key=f"{key_prefix}_qty")
         side = st.selectbox("Sens", ["long", "short"], index=0, key=f"{key_prefix}_side")
         strike_val = float(strike if strike is not None else st.session_state.get("common_strike", 0.0))
@@ -104,16 +98,30 @@ def render_add_to_dashboard_button(
                 "product_type": product_label,
                 "strike": float(strike_val),
                 "strike2": float(strike2_val) if strike2_val is not None else None,
-                "expiration": expiration.isoformat(),
+                "expiration": expiration_dt.isoformat(),
                 "quantity": int(qty),
                 "avg_price": float(price_value),
                 "side": side,
                 "S0": float(spot or 0.0),
                 "maturity_years": maturity,
                 "legs": legs,
+                "T_0": today.isoformat(),
+                "price": float(price_value),
             }
-            add_option_to_dashboard(payload)
-            st.success(f"{product_label} ajouté au dashboard.")
+            try:
+                option_id = add_option_to_dashboard(payload)
+                st.success(
+                    f"{product_label} ajouté au dashboard (id: {option_id}) "
+                    f"et enregistré dans options_portfolio.json."
+                )
+                try:
+                    st.rerun()
+                except Exception:
+                    pass
+            except Exception as exc:  # pragma: no cover - UI feedback
+                st.error(
+                    f"Erreur lors de l'ajout au dashboard (écriture JSON) : {exc}"
+                )
 
 
 def simulate_gbm_paths(S0, r, q, sigma, T, M, N_paths, seed=42):
@@ -2897,6 +2905,8 @@ def ui_heston_full_pipeline(auto_run: bool = False):
             key="heston_cboe_ticker",
             help="Code du sous-jacent coté au CBOE utilisé pour la calibration Heston.",
         ).strip().upper()
+        st.session_state["tkr_common"] = ticker
+        st.session_state["common_underlying"] = ticker
         rf_rate = float(st.session_state.get("common_rate", 0.02))
         div_yield = float(st.session_state.get("common_dividend", 0.0))
 
@@ -4121,6 +4131,15 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                     params=params_heston,
                 )
                 st.success(f"Prix Heston (Carr–Madan) {cpflag_heston} = {price_cm:.6f}")
+                render_add_to_dashboard_button(
+                    product_label="Vanilla (Heston CM)",
+                    option_char=option_char,
+                    price_value=price_cm,
+                    strike=common_strike_value,
+                    maturity=common_maturity_value,
+                    key_prefix=_k("save_heston_cm"),
+                    spot=common_spot_value,
+                )
             except Exception as exc:
                 st.error(f"Erreur Carr–Madan : {exc}")
 
@@ -4220,81 +4239,20 @@ def render_option_tabs_for_type(option_label: str, option_char: str):
                 sigma=common_sigma_value,
             )
             st.success(f"Prix BSM ({cpflag_eu_bsm}) = {price_bsm:.6f}")
+            render_add_to_dashboard_button(
+                product_label="Vanilla (BSM)",
+                option_char=option_char,
+                price_value=price_bsm,
+                strike=common_strike_value,
+                maturity=common_maturity_value,
+                key_prefix=_k("save_bsm"),
+                spot=common_spot_value,
+            )
         st.caption(
             f"Paramètres utilisés pour le prix unique BSM : "
             f"S0={common_spot_value:.4f}, K={common_strike_value:.4f}, "
             f"T={common_maturity_value:.4f}, r={common_rate_value:.4f}, "
             f"d={float(d_common):.4f}, σ={common_sigma_value:.4f}"
-        )
-        st.divider()
-        st.subheader("Monte Carlo (prix ponctuel + option heatmaps)")
-        render_unlock_sidebar_button("eu_mc", "🔓 Réactiver T (onglet Monte Carlo)")
-        render_method_explainer(
-            "🎲 Méthode Monte Carlo pour options européennes",
-            (
-                "- **Simulation GBM** : `n_paths_eu` trajectoires, `n_steps_eu` pas.\n"
-                "- **Payoff call/put** : calcul sur `S_T`, actualisation `exp(-rT)`.\n"
-                "- **Heatmaps optionnelles** : calculées uniquement si demandé.\n"
-            ),
-        )
-        render_inputs_explainer(
-            "🔧 Paramètres utilisés – Monte Carlo européen",
-            (
-                "- **S0, K, T, r, d, σ** : paramètres de base (barre latérale).\n"
-                "- **Trajectoires / pas de temps** : contrôle précision vs temps.\n"
-                "- **Heatmaps Monte Carlo** : décochables pour accélérer le calcul ponctuel.",
-            ),
-        )
-        n_paths_eu = st.number_input(
-            "Trajectoires Monte Carlo",
-            value=10_000,
-            min_value=100,
-            key=_k("n_paths_eu"),
-            help="Nombre de trajectoires simulées pour chaque point de la grille.",
-        )
-        n_steps_eu = st.number_input(
-            "Pas de temps",
-            value=50,
-            min_value=1,
-            key=_k("n_steps_eu"),
-            help="Nombre de pas de temps utilisés pour discrétiser la maturité.",
-        )
-        cpflag_eu_mc = option_label
-        st.caption("Type fixé par l’onglet Call / Put en haut de page.")
-        if st.button(
-            f"Calculer le prix Monte Carlo ({cpflag_eu_mc})",
-            key=_k("btn_price_eu_mc"),
-        ):
-            progress = st.progress(0)
-            try:
-                paths_eu, _ = simulate_gbm_paths(
-                    S0=common_spot_value,
-                    r=common_rate_value,
-                    q=float(d_common),
-                    sigma=common_sigma_value,
-                    T=common_maturity_value,
-                    M=int(n_steps_eu),
-                    N_paths=int(n_paths_eu),
-                )
-                progress.progress(40)
-                ST = paths_eu[-1]
-                if option_char == "c":
-                    payoff = np.maximum(ST - common_strike_value, 0.0)
-                else:
-                    payoff = np.maximum(common_strike_value - ST, 0.0)
-                price_mc = float(np.exp(-common_rate_value * common_maturity_value) * payoff.mean())
-                st.success(f"Prix Monte Carlo ({cpflag_eu_mc}) = {price_mc:.6f}")
-                progress.progress(100)
-            except Exception as exc:
-                st.error(f"Erreur Monte Carlo européen : {exc}")
-            finally:
-                progress.empty()
-        st.caption(
-            f"Paramètres utilisés pour le prix unique Monte Carlo : "
-            f"S0={common_spot_value:.4f}, K={common_strike_value:.4f}, "
-            f"T={common_maturity_value:.4f}, r={common_rate_value:.4f}, "
-            f"d={float(d_common):.4f}, σ={common_sigma_value:.4f}, "
-            f"N_paths={int(n_paths_eu)}, N_steps={int(n_steps_eu)}"
         )
     
     with tab_american:
