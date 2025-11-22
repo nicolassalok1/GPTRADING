@@ -4176,7 +4176,14 @@ def run_app_options():
             ) = st.tabs(["Asian", "Asian géométrique", "Lookback", "Lookback fixed", "Forward-start", "Cliquet / Ratchet"])
 
         with tab_grp_barrier:
-            tab_barrier, tab_binary_barrier = st.tabs(["Barrière", "Binary barrière"])
+            barrier_run_flag = st.session_state.get(_k("run_barrier_done"), False)
+            if not barrier_run_flag:
+                if st.button("🚀 Lancer tous les pricings Barrière", key=_k("run_barrier_btn"), type="primary"):
+                    st.session_state[_k("run_barrier_done")] = True
+                    st.rerun()
+                st.info("Clique sur le bouton pour afficher les onglets Barrière / Binary barrière et lancer les calculs.")
+            else:
+                tab_barrier, tab_binary_barrier = st.tabs(["Barrière", "Binary barrière"])
 
         with tab_grp_spreads:
             (
@@ -4853,26 +4860,28 @@ def run_app_options():
                 progress.empty()
 
 
-        with tab_barrier:
-            st.header("Options barrière")
-            render_unlock_sidebar_button("tab_barrier", "🔓 Réactiver T (onglet Barrière)")
-            render_general_definition_explainer(
-                "🚧 Comprendre les options barrière",
+        barrier_run_flag_local = st.session_state.get(_k("run_barrier_done"), False)
+        if barrier_run_flag_local:
+            with tab_barrier:
+                st.header("Options barrière")
+                render_unlock_sidebar_button("tab_barrier", "🔓 Réactiver T (onglet Barrière)")
+                render_general_definition_explainer(
+                    "🚧 Comprendre les options barrière",
+                    (
+                        "- **Principe de base** : une option barrière est activée ou désactivée en fonction du franchissement d'un niveau de prix prédéfini (`Hu` ou `Hd`). La trajectoire du sous‑jacent entre `0` et `T` devient donc déterminante.\n"
+                        "- **Knock-out** : l'option cesse d'exister dès que la barrière est touchée ; le droit d'exercer à l'échéance est alors perdu.\n"
+                        "- **Knock-in** : à l’inverse, l’option ne \"prend naissance\" que si la barrière a été franchie au moins une fois avant l’échéance.\n"
+                        "- **Up / Down** : on distingue les barrières **Up** (situées au‑dessus du spot initial) des barrières **Down** (situées en dessous), ce qui permet de modéliser des scénarios de protection ou de conditionnalité différentes.\n"
+                        "- **Sensibilité au chemin** : ces produits sont très sensibles au maillage temporel : plus les pas sont grossiers, plus on risque de manquer des franchissements de barrière entre deux dates de simulation.\n"
+                        "- **Objectif de l'onglet** : montrer comment le prix réagit aux combinaisons `S0`, `K`, `T`, `Hu/Hd`, `σ` et au type de barrière (in/out, up/down) via des simulations Monte Carlo."
+                    ),
+                )
                 (
-                    "- **Principe de base** : une option barrière est activée ou désactivée en fonction du franchissement d'un niveau de prix prédéfini (`Hu` ou `Hd`). La trajectoire du sous‑jacent entre `0` et `T` devient donc déterminante.\n"
-                    "- **Knock-out** : l'option cesse d'exister dès que la barrière est touchée ; le droit d'exercer à l'échéance est alors perdu.\n"
-                    "- **Knock-in** : à l’inverse, l’option ne \"prend naissance\" que si la barrière a été franchie au moins une fois avant l’échéance.\n"
-                    "- **Up / Down** : on distingue les barrières **Up** (situées au‑dessus du spot initial) des barrières **Down** (situées en dessous), ce qui permet de modéliser des scénarios de protection ou de conditionnalité différentes.\n"
-                    "- **Sensibilité au chemin** : ces produits sont très sensibles au maillage temporel : plus les pas sont grossiers, plus on risque de manquer des franchissements de barrière entre deux dates de simulation.\n"
-                    "- **Objectif de l'onglet** : montrer comment le prix réagit aux combinaisons `S0`, `K`, `T`, `Hu/Hd`, `σ` et au type de barrière (in/out, up/down) via des simulations Monte Carlo."
-                ),
-            )
-            (
-                tab_barrier_up_out,
-                tab_barrier_down_out,
-                tab_barrier_up_in,
-                tab_barrier_down_in,
-            ) = st.tabs(["Up-and-out", "Down-and-out", "Up-and-in", "Down-and-in"])
+                    tab_barrier_up_out,
+                    tab_barrier_down_out,
+                    tab_barrier_up_in,
+                    tab_barrier_down_in,
+                ) = st.tabs(["Up-and-out", "Down-and-out", "Up-and-in", "Down-and-in"])
 
             with tab_barrier_up_out:
                 st.subheader("Up-and-out")
@@ -5505,8 +5514,9 @@ def run_app_options():
         with tab_diagonal:
             _render_structure_panel("Diagonal spread")
 
-        with tab_binary_barrier:
-            _render_structure_panel("Binary barrier (digital)")
+        if barrier_run_flag_local:
+            with tab_binary_barrier:
+                _render_structure_panel("Binary barrier (digital)")
 
         with tab_asian_geo:
             run_flag = st.session_state.get(_k("run_path_asian_geo_done"), False)
