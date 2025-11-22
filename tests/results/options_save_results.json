@@ -1,0 +1,276 @@
+[
+  {
+    "name": "asian_arith",
+    "status": "ok",
+    "id": "opt_1763815941124",
+    "misc_keys": [
+      "method",
+      "n_obs",
+      "n_paths"
+    ],
+    "strike": 100.0,
+    "strike2": null,
+    "product_type": "Asian arithm\u00e9tique"
+  },
+  {
+    "name": "asian_geom",
+    "status": "ok",
+    "id": "opt_1763815941125",
+    "misc_keys": [
+      "method",
+      "n_obs"
+    ],
+    "strike": 90.0,
+    "strike2": null,
+    "product_type": "Asian g\u00e9om\u00e9trique"
+  },
+  {
+    "name": "digital",
+    "status": "ok",
+    "id": "opt_1763815941125",
+    "misc_keys": [
+      "payout",
+      "style"
+    ],
+    "strike": 100.0,
+    "strike2": null,
+    "product_type": "Digital (cash-or-nothing)"
+  },
+  {
+    "name": "asset_or_nothing",
+    "status": "ok",
+    "id": "opt_1763815941126",
+    "misc_keys": [
+      "style"
+    ],
+    "strike": 80.0,
+    "strike2": null,
+    "product_type": "Asset-or-nothing"
+  },
+  {
+    "name": "forward_start",
+    "status": "ok",
+    "id": "opt_1763815941127",
+    "misc_keys": [
+      "T_start",
+      "k_factor",
+      "n_paths",
+      "n_steps"
+    ],
+    "strike": 100.0,
+    "strike2": null,
+    "product_type": "Forward-start"
+  },
+  {
+    "name": "chooser",
+    "status": "ok",
+    "id": "opt_1763815941127",
+    "misc_keys": [
+      "t_choice"
+    ],
+    "strike": 100.0,
+    "strike2": null,
+    "product_type": "Chooser"
+  },
+  {
+    "name": "straddle",
+    "status": "ok",
+    "id": "opt_1763815941128",
+    "misc_keys": [],
+    "strike": 100.0,
+    "strike2": null,
+    "product_type": "Straddle"
+  },
+  {
+    "name": "strangle",
+    "status": "ok",
+    "id": "opt_1763815941129",
+    "misc_keys": [
+      "k_call",
+      "k_put",
+      "wing"
+    ],
+    "strike": 95.0,
+    "strike2": 105,
+    "product_type": "Strangle"
+  },
+  {
+    "name": "call_spread",
+    "status": "ok",
+    "id": "opt_1763815941130",
+    "misc_keys": [
+      "width"
+    ],
+    "strike": 100.0,
+    "strike2": 105,
+    "product_type": "Call spread"
+  },
+  {
+    "name": "put_spread",
+    "status": "ok",
+    "id": "opt_1763815941131",
+    "misc_keys": [
+      "width"
+    ],
+    "strike": 95.0,
+    "strike2": 90,
+    "product_type": "Put spread"
+  },
+  {
+    "name": "butterfly",
+    "status": "ok",
+    "id": "opt_1763815941132",
+    "misc_keys": [
+      "wing"
+    ],
+    "strike": 95.0,
+    "strike2": 105,
+    "product_type": "Butterfly"
+  },
+  {
+    "name": "condor",
+    "status": "ok",
+    "id": "opt_1763815941133",
+    "misc_keys": [
+      "wing_inner",
+      "wing_outer"
+    ],
+    "strike": 90.0,
+    "strike2": 110,
+    "product_type": "Condor"
+  },
+  {
+    "name": "iron_bfly",
+    "status": "ok",
+    "id": "opt_1763815941134",
+    "misc_keys": [
+      "k_mid",
+      "wing"
+    ],
+    "strike": 95.0,
+    "strike2": 105,
+    "product_type": "Iron Butterfly"
+  },
+  {
+    "name": "calendar",
+    "status": "ok",
+    "id": "opt_1763815941135",
+    "misc_keys": [
+      "T_long",
+      "T_short",
+      "opt_kind"
+    ],
+    "strike": 100.0,
+    "strike2": null,
+    "product_type": "Calendar spread"
+  },
+  {
+    "name": "diagonal",
+    "status": "ok",
+    "id": "opt_1763815941137",
+    "misc_keys": [
+      "T_long",
+      "T_short",
+      "k_long",
+      "k_short",
+      "opt_kind"
+    ],
+    "strike": 100.0,
+    "strike2": 105,
+    "product_type": "Diagonal spread"
+  },
+  {
+    "name": "binary_barrier",
+    "status": "ok",
+    "id": "opt_1763815941138",
+    "misc_keys": [
+      "barrier_level",
+      "barrier_type",
+      "direction",
+      "n_paths",
+      "n_steps",
+      "payout"
+    ],
+    "strike": 100.0,
+    "strike2": null,
+    "product_type": "Binary barrier up-out"
+  },
+  {
+    "name": "barrier_up_out",
+    "status": "ok",
+    "id": "opt_1763815941140",
+    "misc_keys": [
+      "barrier_level",
+      "barrier_type",
+      "knock"
+    ],
+    "strike": 100.0,
+    "strike2": null,
+    "product_type": "Barrier up-and-out"
+  },
+  {
+    "name": "barrier_down_out",
+    "status": "ok",
+    "id": "opt_1763815941141",
+    "misc_keys": [
+      "barrier_level",
+      "barrier_type",
+      "knock"
+    ],
+    "strike": 100.0,
+    "strike2": null,
+    "product_type": "Barrier down-and-out"
+  },
+  {
+    "name": "barrier_up_in",
+    "status": "ok",
+    "id": "opt_1763815941143",
+    "misc_keys": [
+      "barrier_level",
+      "barrier_type",
+      "knock"
+    ],
+    "strike": 100.0,
+    "strike2": null,
+    "product_type": "Barrier up-and-in"
+  },
+  {
+    "name": "barrier_down_in",
+    "status": "ok",
+    "id": "opt_1763815941145",
+    "misc_keys": [
+      "barrier_level",
+      "barrier_type",
+      "knock"
+    ],
+    "strike": 100.0,
+    "strike2": null,
+    "product_type": "Barrier down-and-in"
+  },
+  {
+    "name": "lookback_fixed",
+    "status": "ok",
+    "id": "opt_1763815941146",
+    "misc_keys": [
+      "n_paths",
+      "n_steps"
+    ],
+    "strike": 100.0,
+    "strike2": null,
+    "product_type": "Lookback fixed"
+  },
+  {
+    "name": "cliquet",
+    "status": "ok",
+    "id": "opt_1763815941149",
+    "misc_keys": [
+      "cap",
+      "floor",
+      "n_paths",
+      "n_periods"
+    ],
+    "strike": 100.0,
+    "strike2": null,
+    "product_type": "Cliquet / Ratchet"
+  }
+]

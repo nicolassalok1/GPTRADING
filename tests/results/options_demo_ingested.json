@@ -1,0 +1,459 @@
+[
+  {
+    "id": "opt_1763815719762",
+    "product": "Asian arithm\u00e9tique",
+    "underlying": "DEMO",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "method",
+      "n_obs",
+      "n_paths"
+    ]
+  },
+  {
+    "id": "opt_1763815719763",
+    "product": "Digital (cash-or-nothing)",
+    "underlying": "DEMO",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "payout",
+      "style"
+    ]
+  },
+  {
+    "id": "opt_1763815719764",
+    "product": "Asset-or-nothing",
+    "underlying": "DEMO",
+    "strike": 80.0,
+    "strike2": null,
+    "misc_keys": [
+      "style"
+    ]
+  },
+  {
+    "id": "opt_1763815719765",
+    "product": "Chooser",
+    "underlying": "DEMO",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "t_choice"
+    ]
+  },
+  {
+    "id": "opt_1763815719766",
+    "product": "Straddle",
+    "underlying": "DEMO",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": []
+  },
+  {
+    "id": "opt_1763815719767",
+    "product": "Call spread",
+    "underlying": "DEMO",
+    "strike": 100.0,
+    "strike2": 105,
+    "misc_keys": [
+      "width"
+    ]
+  },
+  {
+    "id": "opt_1763815719768",
+    "product": "Put spread",
+    "underlying": "DEMO",
+    "strike": 95.0,
+    "strike2": 90,
+    "misc_keys": [
+      "width"
+    ]
+  },
+  {
+    "id": "opt_1763815719769",
+    "product": "Butterfly",
+    "underlying": "DEMO",
+    "strike": 95.0,
+    "strike2": 105,
+    "misc_keys": [
+      "wing"
+    ]
+  },
+  {
+    "id": "opt_1763815719770",
+    "product": "Iron Butterfly",
+    "underlying": "DEMO",
+    "strike": 95.0,
+    "strike2": 105,
+    "misc_keys": [
+      "k_mid",
+      "wing"
+    ]
+  },
+  {
+    "id": "opt_1763815719771",
+    "product": "Calendar spread",
+    "underlying": "DEMO",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "T_long",
+      "T_short",
+      "opt_kind"
+    ]
+  },
+  {
+    "id": "opt_1763815719772",
+    "product": "Diagonal spread",
+    "underlying": "DEMO",
+    "strike": 100.0,
+    "strike2": 105,
+    "misc_keys": [
+      "T_long",
+      "T_short",
+      "k_long",
+      "k_short",
+      "opt_kind"
+    ]
+  },
+  {
+    "id": "opt_1763815719773",
+    "product": "Binary barrier up-out",
+    "underlying": "DEMO",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "barrier_level",
+      "barrier_type",
+      "direction",
+      "n_paths",
+      "n_steps",
+      "payout"
+    ]
+  },
+  {
+    "id": "opt_1763815719774",
+    "product": "Barrier up-and-out",
+    "underlying": "DEMO",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "barrier_level",
+      "barrier_type",
+      "knock"
+    ]
+  },
+  {
+    "id": "opt_1763815719775",
+    "product": "Barrier down-and-out",
+    "underlying": "DEMO",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "barrier_level",
+      "barrier_type",
+      "knock"
+    ]
+  },
+  {
+    "id": "opt_1763815719776",
+    "product": "Barrier up-and-in",
+    "underlying": "DEMO",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "barrier_level",
+      "barrier_type",
+      "knock"
+    ]
+  },
+  {
+    "id": "opt_1763815719777",
+    "product": "Barrier down-and-in",
+    "underlying": "DEMO",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "barrier_level",
+      "barrier_type",
+      "knock"
+    ]
+  },
+  {
+    "id": "opt_1763815719778",
+    "product": "Lookback fixed",
+    "underlying": "DEMO",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "n_paths",
+      "n_steps"
+    ]
+  },
+  {
+    "id": "opt_1763815719780",
+    "product": "Cliquet / Ratchet",
+    "underlying": "DEMO",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "cap",
+      "floor",
+      "n_paths",
+      "n_periods"
+    ]
+  },
+  {
+    "id": "demo_asian_geom_demo_1763815787435",
+    "product": "Asian g\u00e9om\u00e9trique",
+    "underlying": "DEMO2",
+    "strike": 90.0,
+    "strike2": null,
+    "misc_keys": [
+      "method",
+      "n_obs"
+    ]
+  },
+  {
+    "id": "demo_asian_arith_demo_1763815787437",
+    "product": "Asian arithm\u00e9tique",
+    "underlying": "DEMO2",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "method",
+      "n_obs",
+      "n_paths"
+    ]
+  },
+  {
+    "id": "demo_digital_demo_1763815787438",
+    "product": "Digital (cash-or-nothing)",
+    "underlying": "DEMO2",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "payout",
+      "style"
+    ]
+  },
+  {
+    "id": "demo_asset_on_demo_1763815787440",
+    "product": "Asset-or-nothing",
+    "underlying": "DEMO2",
+    "strike": 80.0,
+    "strike2": null,
+    "misc_keys": [
+      "style"
+    ]
+  },
+  {
+    "id": "demo_forward_start_demo_1763815787441",
+    "product": "Forward-start",
+    "underlying": "DEMO2",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "T_start",
+      "k_factor",
+      "n_paths",
+      "n_steps"
+    ]
+  },
+  {
+    "id": "demo_chooser_demo_1763815787442",
+    "product": "Chooser",
+    "underlying": "DEMO2",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "t_choice"
+    ]
+  },
+  {
+    "id": "demo_straddle_demo_1763815787444",
+    "product": "Straddle",
+    "underlying": "DEMO2",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": []
+  },
+  {
+    "id": "demo_strangle_demo_1763815787446",
+    "product": "Strangle",
+    "underlying": "DEMO2",
+    "strike": 95.0,
+    "strike2": 105,
+    "misc_keys": [
+      "k_call",
+      "k_put",
+      "wing"
+    ]
+  },
+  {
+    "id": "demo_call_spread_demo_1763815787447",
+    "product": "Call spread",
+    "underlying": "DEMO2",
+    "strike": 100.0,
+    "strike2": 105,
+    "misc_keys": [
+      "width"
+    ]
+  },
+  {
+    "id": "demo_put_spread_demo_1763815787449",
+    "product": "Put spread",
+    "underlying": "DEMO2",
+    "strike": 95.0,
+    "strike2": 90,
+    "misc_keys": [
+      "width"
+    ]
+  },
+  {
+    "id": "demo_butterfly_demo_1763815787450",
+    "product": "Butterfly",
+    "underlying": "DEMO2",
+    "strike": 95.0,
+    "strike2": 105,
+    "misc_keys": [
+      "wing"
+    ]
+  },
+  {
+    "id": "demo_condor_demo_1763815787452",
+    "product": "Condor",
+    "underlying": "DEMO2",
+    "strike": 90.0,
+    "strike2": 110,
+    "misc_keys": [
+      "wing_inner",
+      "wing_outer"
+    ]
+  },
+  {
+    "id": "demo_iron_bfly_demo_1763815787454",
+    "product": "Iron Butterfly",
+    "underlying": "DEMO2",
+    "strike": 95.0,
+    "strike2": 105,
+    "misc_keys": [
+      "k_mid",
+      "wing"
+    ]
+  },
+  {
+    "id": "demo_calendar_demo_1763815787456",
+    "product": "Calendar spread",
+    "underlying": "DEMO2",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "T_long",
+      "T_short",
+      "opt_kind"
+    ]
+  },
+  {
+    "id": "demo_diagonal_demo_1763815787458",
+    "product": "Diagonal spread",
+    "underlying": "DEMO2",
+    "strike": 100.0,
+    "strike2": 105,
+    "misc_keys": [
+      "T_long",
+      "T_short",
+      "k_long",
+      "k_short",
+      "opt_kind"
+    ]
+  },
+  {
+    "id": "demo_binary_barrier_demo_1763815787460",
+    "product": "Binary barrier up-out",
+    "underlying": "DEMO2",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "barrier_level",
+      "barrier_type",
+      "direction",
+      "n_paths",
+      "n_steps",
+      "payout"
+    ]
+  },
+  {
+    "id": "demo_barrier_up_out_demo_1763815787462",
+    "product": "Barrier up-and-out",
+    "underlying": "DEMO2",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "barrier_level",
+      "barrier_type",
+      "knock"
+    ]
+  },
+  {
+    "id": "demo_barrier_down_out_demo_1763815787464",
+    "product": "Barrier down-and-out",
+    "underlying": "DEMO2",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "barrier_level",
+      "barrier_type",
+      "knock"
+    ]
+  },
+  {
+    "id": "demo_barrier_up_in_demo_1763815787466",
+    "product": "Barrier up-and-in",
+    "underlying": "DEMO2",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "barrier_level",
+      "barrier_type",
+      "knock"
+    ]
+  },
+  {
+    "id": "demo_barrier_down_in_demo_1763815787469",
+    "product": "Barrier down-and-in",
+    "underlying": "DEMO2",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "barrier_level",
+      "barrier_type",
+      "knock"
+    ]
+  },
+  {
+    "id": "demo_lookback_fixed_demo_1763815787472",
+    "product": "Lookback fixed",
+    "underlying": "DEMO2",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "n_paths",
+      "n_steps"
+    ]
+  },
+  {
+    "id": "demo_cliquet_demo_1763815787475",
+    "product": "Cliquet / Ratchet",
+    "underlying": "DEMO2",
+    "strike": 100.0,
+    "strike2": null,
+    "misc_keys": [
+      "cap",
+      "floor",
+      "n_paths",
+      "n_periods"
+    ]
+  }
+]
