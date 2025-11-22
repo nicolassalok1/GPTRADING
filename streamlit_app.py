@@ -3045,43 +3045,43 @@ def run_app_options():
         learning_rate = 0.005
 
         if calls_df is not None and puts_df is not None and S0_ref is not None:
-            col_nn, col_modes = st.columns(2)
-            with col_nn:
-                st.subheader("🎯 Calibration NN Carr-Madan")
-                calib_T_band = st.number_input(
-                    "Largeur bande T (±)",
-                    value=0.04,
-                    min_value=0.01,
-                    max_value=0.5,
-                    step=0.01,
-                    format="%.2f",
-                    key="heston_cboe_calib_band",
-                    help="Largeur de la bande de maturités autour de la cible utilisée pour la calibration.",
-                )
-
-                unique_T = sorted(calls_df["T"].round(2).unique().tolist())
-                if unique_T:
-                    if calib_T_target is None:
-                        target_guess = max(MIN_IV_MATURITY, unique_T[0] + calib_T_band + 0.1)
-                        idx_default = int(np.argmin(np.abs(np.array(unique_T) - target_guess)))
-                    else:
-                        try:
-                            idx_default = unique_T.index(calib_T_target)
-                        except ValueError:
-                            idx_default = 0
-
-                    calib_T_target = st.selectbox(
-                        "Maturité T cible pour la calibration (Time to Maturity)",
-                        unique_T,
-                        index=idx_default,
-                        format_func=lambda x: f"{x:.2f}",
-                        key="heston_cboe_calib_target",
-                        help="Maturité autour de laquelle la calibration Heston est centrée.",
+            with st.expander("🎯 Calibration NN Carr-Madan", expanded=False):
+                col_nn, col_modes = st.columns(2)
+                with col_nn:
+                    calib_T_band = st.number_input(
+                        "Largeur bande T (±)",
+                        value=0.04,
+                        min_value=0.01,
+                        max_value=0.5,
+                        step=0.01,
+                        format="%.2f",
+                        key="heston_cboe_calib_band",
+                        help="Largeur de la bande de maturités autour de la cible utilisée pour la calibration.",
                     )
-                    state.heston_calib_T_target = calib_T_target
-                else:
-                    st.warning("Pas de maturités disponibles dans les données CBOE.")
-                    calib_T_target = None
+
+                    unique_T = sorted(calls_df["T"].round(2).unique().tolist())
+                    if unique_T:
+                        if calib_T_target is None:
+                            target_guess = max(MIN_IV_MATURITY, unique_T[0] + calib_T_band + 0.1)
+                            idx_default = int(np.argmin(np.abs(np.array(unique_T) - target_guess)))
+                        else:
+                            try:
+                                idx_default = unique_T.index(calib_T_target)
+                            except ValueError:
+                                idx_default = 0
+
+                        calib_T_target = st.selectbox(
+                            "Maturité T cible pour la calibration (Time to Maturity)",
+                            unique_T,
+                            index=idx_default,
+                            format_func=lambda x: f"{x:.2f}",
+                            key="heston_cboe_calib_target",
+                            help="Maturité autour de laquelle la calibration Heston est centrée.",
+                        )
+                        state.heston_calib_T_target = calib_T_target
+                    else:
+                        st.warning("Pas de maturités disponibles dans les données CBOE.")
+                        calib_T_target = None
 
                 with col_modes:
                     st.subheader("⚙️ Modes de calibration NN")
@@ -3115,11 +3115,10 @@ def run_app_options():
             else:
                 calib_band_range = None
 
-        run_button = False
-        if calls_df is not None and puts_df is not None and S0_ref is not None:
-            # Only explicit click launches calibration; changing K/T won't auto-relance
-            run_button = st.button("🚀 Lancer l'analyse", type="primary", width="stretch", key="heston_cboe_run")
+            run_button = st.button("🚀 Lancer la calibration", type="primary", width="stretch", key="heston_cboe_run")
             st.divider()
+        else:
+            run_button = False
 
         if run_button:
             if calls_df is None or puts_df is None or S0_ref is None:
@@ -3243,7 +3242,7 @@ def run_app_options():
 
     ui_heston_full_pipeline()
 
-    st.markdown("### Paramètres communs")
+    st.markdown("### Paramètres de Black-Scholes-Mer")
 
     # Masquer le reste tant que les données CBOE n'ont pas été récupérées
     if not st.session_state.get("heston_cboe_loaded_once", False):
