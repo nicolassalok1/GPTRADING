@@ -109,6 +109,11 @@ def render_add_to_dashboard_button(
                 "price": float(price_value),
             }
             try:
+                # Log the JSON write attempt (UI + server log)
+                st.caption(
+                    f"[LOG] Écriture vers options_portfolio.json avec payload: {payload}"
+                )
+                print(f"[options] add_to_dashboard payload={payload}")
                 option_id = add_option_to_dashboard(payload)
                 st.success(
                     f"{product_label} ajouté au dashboard (id: {option_id}) "

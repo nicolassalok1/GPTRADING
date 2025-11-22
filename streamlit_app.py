@@ -31,7 +31,15 @@ APP_OPTIONS_B64 = "aW1wb3J0IGlvCmltcG9ydCBtYXRoCmltcG9ydCBvcwppbXBvcnQgc3VicHJvY
 
 
 def run_app_options():
-    src = base64.b64decode(APP_OPTIONS_B64.encode()).decode()
+    src = None
+    file_path = APP_DIR / "app_options.py"
+    if file_path.exists():
+        try:
+            src = file_path.read_text()
+        except Exception:
+            src = None
+    if src is None:
+        src = base64.b64decode(APP_OPTIONS_B64.encode()).decode()
     exec(src, globals())
 
 # Alpaca API Setup
@@ -134,16 +142,25 @@ def load_options_book():
 
 
 def save_options_book(book):
-    # Write to primary file
-    with open(OPTIONS_BOOK_FILE, 'w') as f:
-        json.dump(book, f, indent=2)
-    # Also mirror to legacy path for backward compatibility
-    if OPTIONS_BOOK_FILE_LEGACY != OPTIONS_BOOK_FILE:
+    """Persist the unified options book (and legacy mirror) to disk."""
+    try:
+        OPTIONS_BOOK_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(OPTIONS_BOOK_FILE, 'w') as f:
+            json.dump(book, f, indent=2)
+        if OPTIONS_BOOK_FILE_LEGACY != OPTIONS_BOOK_FILE:
+            try:
+                with open(OPTIONS_BOOK_FILE_LEGACY, 'w') as f_legacy:
+                    json.dump(book, f_legacy, indent=2)
+            except Exception:
+                # Legacy mirror is best-effort; ignore failures there.
+                pass
+    except Exception as exc:
+        # Surface file-system issues (permissions, etc.) in the UI.
         try:
-            with open(OPTIONS_BOOK_FILE_LEGACY, 'w') as f_legacy:
-                json.dump(book, f_legacy, indent=2)
+            st.error(f"Erreur lors de l'écriture du fichier options : {exc}")
         except Exception:
             pass
+        raise
 
 
 def _split_options_book(book: dict):
@@ -929,6 +946,8 @@ with st.expander("📘 Tutoriel d'utilisation de l'outil"):
 
 # Sidebar
 with st.sidebar:
+    if st.button("🏠 Retour au Dashboard", key="btn_back_dashboard"):
+        st.session_state["_switch_to_dashboard"] = True
     st.header("⚙️ Settings")
     st.info("Data is refreshed automatically on each interaction")
     if st.button("🔄 Refresh Data"):
@@ -943,6 +962,22 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📄 Forwards",
     "📜 Options",
 ])
+if st.session_state.pop("_switch_to_dashboard", False):
+    st.markdown(
+        """
+        <script>
+        const tabs = window.parent.document.querySelectorAll('button[data-baseweb="tab"]');
+        for (const t of tabs) {
+          const label = (t.innerText || "").trim();
+          if (label.includes("📊 Dashboard") || label.includes("Dashboard")) {
+            t.click();
+            break;
+          }
+        }
+        </script>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # Tab 1: Dashboard
 with tab1:
