@@ -5288,27 +5288,37 @@ def run_app_options():
                 ),
             )
 
-            if st.button(
-                f"Calculer le prix Bermuda (PDE) "
-                f"(S0={S0_common:.2f}, K={K_common:.2f}, T={T_common:.2f}, r={r_common:.2f}, d={d_common:.2f}, σ={sigma_common:.2f})",
-                key=_k("btn_bmd_cn"),
+            with st.expander(
+                f"📈 Prix Bermuda (PDE) – S0={S0_common:.2f}, K={K_common:.2f}, T={T_common:.2f}",
+                expanded=False,
             ):
-                model_bmd = CrankNicolsonBS(
-                    Typeflag="Bmd",
-                    cpflag=cpflag_bmd_char,
-                    S0=S0_common,
-                    K=K_common,
-                    T=T_common,
-                    vol=sigma_common,
-                    r=r_common,
-                    d=d_common,
-                    n_exercise_dates=int(n_ex_dates_bmd),
-                )
-                price_bmd, delta_bmd, gamma_bmd, theta_bmd = model_bmd.CN_option_info()
+                with st.spinner("Calcul PDE Bermuda (Crank–Nicolson)..."):
+                    model_bmd = CrankNicolsonBS(
+                        Typeflag="Bmd",
+                        cpflag=cpflag_bmd_char,
+                        S0=S0_common,
+                        K=K_common,
+                        T=T_common,
+                        vol=sigma_common,
+                        r=r_common,
+                        d=d_common,
+                        n_exercise_dates=int(n_ex_dates_bmd),
+                    )
+                    price_bmd, delta_bmd, gamma_bmd, theta_bmd = model_bmd.CN_option_info()
                 st.write(f"**Prix**: {price_bmd:.4f}")
                 st.write(f"**Delta**: {delta_bmd:.4f}")
                 st.write(f"**Gamma**: {gamma_bmd:.4f}")
                 st.write(f"**Theta**: {theta_bmd:.4f}")
+                render_add_to_dashboard_button(
+                    product_label="Bermudan (PDE)",
+                    option_char=option_char,
+                    price_value=price_bmd,
+                    strike=K_common,
+                    maturity=T_common,
+                    key_prefix=_k("save_bermudan_pde"),
+                    spot=S0_common,
+                    misc={"n_ex_dates": int(n_ex_dates_bmd)},
+                )
 
 
         with tab_basket:
