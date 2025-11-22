@@ -4860,28 +4860,26 @@ def run_app_options():
                 progress.empty()
 
 
-        barrier_run_flag_local = st.session_state.get(_k("run_barrier_done"), False)
-        if barrier_run_flag_local:
-            with tab_barrier:
-                st.header("Options barrière")
-                render_unlock_sidebar_button("tab_barrier", "🔓 Réactiver T (onglet Barrière)")
-                render_general_definition_explainer(
-                    "🚧 Comprendre les options barrière",
-                    (
-                        "- **Principe de base** : une option barrière est activée ou désactivée en fonction du franchissement d'un niveau de prix prédéfini (`Hu` ou `Hd`). La trajectoire du sous‑jacent entre `0` et `T` devient donc déterminante.\n"
-                        "- **Knock-out** : l'option cesse d'exister dès que la barrière est touchée ; le droit d'exercer à l'échéance est alors perdu.\n"
-                        "- **Knock-in** : à l’inverse, l’option ne \"prend naissance\" que si la barrière a été franchie au moins une fois avant l’échéance.\n"
-                        "- **Up / Down** : on distingue les barrières **Up** (situées au‑dessus du spot initial) des barrières **Down** (situées en dessous), ce qui permet de modéliser des scénarios de protection ou de conditionnalité différentes.\n"
-                        "- **Sensibilité au chemin** : ces produits sont très sensibles au maillage temporel : plus les pas sont grossiers, plus on risque de manquer des franchissements de barrière entre deux dates de simulation.\n"
-                        "- **Objectif de l'onglet** : montrer comment le prix réagit aux combinaisons `S0`, `K`, `T`, `Hu/Hd`, `σ` et au type de barrière (in/out, up/down) via des simulations Monte Carlo."
-                    ),
-                )
+        with tab_barrier:
+            st.header("Options barrière")
+            render_unlock_sidebar_button("tab_barrier", "🔓 Réactiver T (onglet Barrière)")
+            render_general_definition_explainer(
+                "🚧 Comprendre les options barrière",
                 (
-                    tab_barrier_up_out,
-                    tab_barrier_down_out,
-                    tab_barrier_up_in,
-                    tab_barrier_down_in,
-                ) = st.tabs(["Up-and-out", "Down-and-out", "Up-and-in", "Down-and-in"])
+                    "- **Principe de base** : une option barrière est activée ou désactivée en fonction du franchissement d'un niveau de prix prédéfini (`Hu` ou `Hd`). La trajectoire du sous‑jacent entre `0` et `T` devient donc déterminante.\n"
+                    "- **Knock-out** : l'option cesse d'exister dès que la barrière est touchée ; le droit d'exercer à l'échéance est alors perdu.\n"
+                    "- **Knock-in** : à l’inverse, l’option ne \"prend naissance\" que si la barrière a été franchie au moins une fois avant l’échéance.\n"
+                    "- **Up / Down** : on distingue les barrières **Up** (situées au‑dessus du spot initial) des barrières **Down** (situées en dessous), ce qui permet de modéliser des scénarios de protection ou de conditionnalité différentes.\n"
+                    "- **Sensibilité au chemin** : ces produits sont très sensibles au maillage temporel : plus les pas sont grossiers, plus on risque de manquer des franchissements de barrière entre deux dates de simulation.\n"
+                    "- **Objectif de l'onglet** : montrer comment le prix réagit aux combinaisons `S0`, `K`, `T`, `Hu/Hd`, `σ` et au type de barrière (in/out, up/down) via des simulations Monte Carlo."
+                ),
+            )
+            (
+                tab_barrier_up_out,
+                tab_barrier_down_out,
+                tab_barrier_up_in,
+                tab_barrier_down_in,
+            ) = st.tabs(["Up-and-out", "Down-and-out", "Up-and-in", "Down-and-in"])
 
             with tab_barrier_up_out:
                 st.subheader("Up-and-out")
@@ -5466,13 +5464,37 @@ def run_app_options():
                 )
 
         with tab_iron_condor:
-            _render_structure_panel("Iron Condor")
+            _flag_ic = st.session_state.get(_k("run_iron_condor_done"), False)
+            if not _flag_ic:
+                if st.button("🚀 Lancer le pricing Iron Condor", key=_k("run_iron_condor_btn"), type="primary"):
+                    st.session_state[_k("run_iron_condor_done")] = True
+                    _flag_ic = True
+            if _flag_ic:
+                _render_structure_panel("Iron Condor")
+            else:
+                st.info("Clique pour lancer le pricing Iron Condor.")
 
         with tab_digital:
-            _render_structure_panel("Digital (cash-or-nothing)")
+            _flag_dig = st.session_state.get(_k("run_digital_done"), False)
+            if not _flag_dig:
+                if st.button("🚀 Lancer le pricing Digital", key=_k("run_digital_btn"), type="primary"):
+                    st.session_state[_k("run_digital_done")] = True
+                    _flag_dig = True
+            if _flag_dig:
+                _render_structure_panel("Digital (cash-or-nothing)")
+            else:
+                st.info("Clique pour lancer le pricing Digital.")
 
         with tab_asset_on:
-            _render_structure_panel("Asset-or-nothing")
+            _flag_asset = st.session_state.get(_k("run_asset_on_done"), False)
+            if not _flag_asset:
+                if st.button("🚀 Lancer le pricing Asset-or-nothing", key=_k("run_asset_on_btn"), type="primary"):
+                    st.session_state[_k("run_asset_on_done")] = True
+                    _flag_asset = True
+            if _flag_asset:
+                _render_structure_panel("Asset-or-nothing")
+            else:
+                st.info("Clique pour lancer le pricing Asset-or-nothing.")
 
         with tab_forward_start:
             run_flag = st.session_state.get(_k("run_path_forward_done"), False)
@@ -5485,34 +5507,114 @@ def run_app_options():
                 _render_structure_panel("Forward-start option")
 
         with tab_chooser:
-            _render_structure_panel("Chooser option")
+            _flag_chooser = st.session_state.get(_k("run_chooser_done"), False)
+            if not _flag_chooser:
+                if st.button("🚀 Lancer le pricing Chooser", key=_k("run_chooser_btn"), type="primary"):
+                    st.session_state[_k("run_chooser_done")] = True
+                    _flag_chooser = True
+            if _flag_chooser:
+                _render_structure_panel("Chooser option")
+            else:
+                st.info("Clique pour lancer le pricing Chooser.")
 
         with tab_straddle:
-            _render_structure_panel("Straddle")
+            _flag = st.session_state.get(_k("run_straddle_done"), False)
+            if not _flag:
+                if st.button("🚀 Lancer le pricing Straddle", key=_k("run_straddle_btn"), type="primary"):
+                    st.session_state[_k("run_straddle_done")] = True
+                    _flag = True
+            if _flag:
+                _render_structure_panel("Straddle")
+            else:
+                st.info("Clique pour lancer le pricing Straddle.")
 
         with tab_strangle:
-            _render_structure_panel("Strangle")
+            _flag = st.session_state.get(_k("run_strangle_done"), False)
+            if not _flag:
+                if st.button("🚀 Lancer le pricing Strangle", key=_k("run_strangle_btn"), type="primary"):
+                    st.session_state[_k("run_strangle_done")] = True
+                    _flag = True
+            if _flag:
+                _render_structure_panel("Strangle")
+            else:
+                st.info("Clique pour lancer le pricing Strangle.")
 
         with tab_call_spread:
-            _render_structure_panel("Call spread")
+            _flag = st.session_state.get(_k("run_call_spread_done"), False)
+            if not _flag:
+                if st.button("🚀 Lancer le pricing Call spread", key=_k("run_call_spread_btn"), type="primary"):
+                    st.session_state[_k("run_call_spread_done")] = True
+                    _flag = True
+            if _flag:
+                _render_structure_panel("Call spread")
+            else:
+                st.info("Clique pour lancer le pricing Call spread.")
 
         with tab_put_spread:
-            _render_structure_panel("Put spread")
+            _flag = st.session_state.get(_k("run_put_spread_done"), False)
+            if not _flag:
+                if st.button("🚀 Lancer le pricing Put spread", key=_k("run_put_spread_btn"), type="primary"):
+                    st.session_state[_k("run_put_spread_done")] = True
+                    _flag = True
+            if _flag:
+                _render_structure_panel("Put spread")
+            else:
+                st.info("Clique pour lancer le pricing Put spread.")
 
         with tab_butterfly:
-            _render_structure_panel("Butterfly")
+            _flag = st.session_state.get(_k("run_butterfly_done"), False)
+            if not _flag:
+                if st.button("🚀 Lancer le pricing Butterfly", key=_k("run_butterfly_btn"), type="primary"):
+                    st.session_state[_k("run_butterfly_done")] = True
+                    _flag = True
+            if _flag:
+                _render_structure_panel("Butterfly")
+            else:
+                st.info("Clique pour lancer le pricing Butterfly.")
 
         with tab_condor:
-            _render_structure_panel("Condor")
+            _flag = st.session_state.get(_k("run_condor_done"), False)
+            if not _flag:
+                if st.button("🚀 Lancer le pricing Condor", key=_k("run_condor_btn"), type="primary"):
+                    st.session_state[_k("run_condor_done")] = True
+                    _flag = True
+            if _flag:
+                _render_structure_panel("Condor")
+            else:
+                st.info("Clique pour lancer le pricing Condor.")
 
         with tab_iron_bfly:
-            _render_structure_panel("Iron Butterfly")
+            _flag_ib = st.session_state.get(_k("run_iron_bfly_done"), False)
+            if not _flag_ib:
+                if st.button("🚀 Lancer le pricing Iron Butterfly", key=_k("run_iron_bfly_btn"), type="primary"):
+                    st.session_state[_k("run_iron_bfly_done")] = True
+                    _flag_ib = True
+            if _flag_ib:
+                _render_structure_panel("Iron Butterfly")
+            else:
+                st.info("Clique pour lancer le pricing Iron Butterfly.")
 
         with tab_calendar:
-            _render_structure_panel("Calendar spread")
+            _flag_cal = st.session_state.get(_k("run_calendar_done"), False)
+            if not _flag_cal:
+                if st.button("🚀 Lancer le pricing Calendar spread", key=_k("run_calendar_btn"), type="primary"):
+                    st.session_state[_k("run_calendar_done")] = True
+                    _flag_cal = True
+            if _flag_cal:
+                _render_structure_panel("Calendar spread")
+            else:
+                st.info("Clique pour lancer le pricing Calendar spread.")
 
         with tab_diagonal:
-            _render_structure_panel("Diagonal spread")
+            _flag_diag = st.session_state.get(_k("run_diagonal_done"), False)
+            if not _flag_diag:
+                if st.button("🚀 Lancer le pricing Diagonal spread", key=_k("run_diagonal_btn"), type="primary"):
+                    st.session_state[_k("run_diagonal_done")] = True
+                    _flag_diag = True
+            if _flag_diag:
+                _render_structure_panel("Diagonal spread")
+            else:
+                st.info("Clique pour lancer le pricing Diagonal spread.")
 
         if barrier_run_flag_local:
             with tab_binary_barrier:
@@ -5549,10 +5651,26 @@ def run_app_options():
                 _render_structure_panel("Cliquet / Ratchet (MC)")
 
         with tab_quanto:
-            _render_structure_panel("Quanto option")
+            _flag_quanto = st.session_state.get(_k("run_quanto_done"), False)
+            if not _flag_quanto:
+                if st.button("🚀 Lancer le pricing Quanto", key=_k("run_quanto_btn"), type="primary"):
+                    st.session_state[_k("run_quanto_done")] = True
+                    _flag_quanto = True
+            if _flag_quanto:
+                _render_structure_panel("Quanto option")
+            else:
+                st.info("Clique pour lancer le pricing Quanto.")
 
         with tab_rainbow:
-            _render_structure_panel("Rainbow option")
+            _flag_rainbow = st.session_state.get(_k("run_rainbow_done"), False)
+            if not _flag_rainbow:
+                if st.button("🚀 Lancer le pricing Rainbow", key=_k("run_rainbow_btn"), type="primary"):
+                    st.session_state[_k("run_rainbow_done")] = True
+                    _flag_rainbow = True
+            if _flag_rainbow:
+                _render_structure_panel("Rainbow option")
+            else:
+                st.info("Clique pour lancer le pricing Rainbow.")
 
     tab_call, tab_put = st.tabs(["Call", "Put"])
     for _label, _tab in (("Call", tab_call), ("Put", tab_put)):
