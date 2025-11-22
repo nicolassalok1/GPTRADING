@@ -1780,8 +1780,7 @@ with tab4:
 
 # Tab 5: app_options (copie intégrale)
 with tab5:
-    with st.spinner("Chargement de la copie intégrale..."):
-        run_app_options()
+    run_app_options()
 
 # Footer
 st.markdown("---")
