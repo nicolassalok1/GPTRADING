@@ -4235,23 +4235,20 @@ def run_app_options():
             )
 
             st.caption("Pricing direct avec Carr–Madan (Heston calibré).")
-            params_heston = _heston_params_from_state()
-            cpflag_heston = option_label
-            if st.button(
-                f"Calculer le prix Heston Carr–Madan ({cpflag_heston})",
-                key=_k("btn_price_heston_cm"),
-            ):
+            with st.expander(f"📈 Prix Heston Carr–Madan ({option_label})", expanded=False):
+                params_heston = _heston_params_from_state()
                 try:
-                    price_cm = _carr_madan_price(
-                        S0=float(common_spot_value),
-                        K=float(common_strike_value),
-                        T=float(common_maturity_value),
-                        r=float(common_rate_value),
-                        q=float(d_common),
-                        opt_char=option_char,
-                        params=params_heston,
-                    )
-                    st.success(f"Prix Heston (Carr–Madan) {cpflag_heston} = {price_cm:.6f}")
+                    with st.spinner("Calcul Heston Carr–Madan..."):
+                        price_cm = _carr_madan_price(
+                            S0=float(common_spot_value),
+                            K=float(common_strike_value),
+                            T=float(common_maturity_value),
+                            r=float(common_rate_value),
+                            q=float(d_common),
+                            opt_char=option_char,
+                            params=params_heston,
+                        )
+                    st.success(f"Prix Heston (Carr–Madan) {option_label} = {price_cm:.6f}")
                     render_add_to_dashboard_button(
                         product_label="Vanilla (Heston CM)",
                         option_char=option_char,
@@ -4345,20 +4342,18 @@ def run_app_options():
             )
             cpflag_eu_bsm = option_label
             st.caption("Type fixé par l’onglet Call / Put en haut de page.")
-            if st.button(
-                f"Calculer le prix BSM ({cpflag_eu_bsm})",
-                key=_k("btn_price_eu_bsm"),
-            ):
-                opt_type = "call" if option_char == "c" else "put"
-                price_bsm = _vanilla_price_with_dividend(
-                    option_type=opt_type,
-                    S0=common_spot_value,
-                    K=common_strike_value,
-                    T=common_maturity_value,
-                    r=common_rate_value,
-                    dividend=float(d_common),
-                    sigma=common_sigma_value,
-                )
+            with st.expander(f"📈 Prix BSM ({cpflag_eu_bsm})", expanded=False):
+                with st.spinner("Calcul BSM..."):
+                    opt_type = "call" if option_char == "c" else "put"
+                    price_bsm = _vanilla_price_with_dividend(
+                        option_type=opt_type,
+                        S0=common_spot_value,
+                        K=common_strike_value,
+                        T=common_maturity_value,
+                        r=common_rate_value,
+                        dividend=float(d_common),
+                        sigma=common_sigma_value,
+                    )
                 st.success(f"Prix BSM ({cpflag_eu_bsm}) = {price_bsm:.6f}")
                 render_add_to_dashboard_button(
                     product_label="Vanilla (BSM)",
