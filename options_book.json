@@ -201,5 +201,63 @@
     "last_updated": "2025-11-22 14:27:06",
     "product": "Vanilla (Heston CM)",
     "T_0_price": 25.64823651207065
+  },
+  "opt_1763823198654": {
+    "underlying": "SPY",
+    "option_type": "call",
+    "product_type": "Vanilla (Heston CM)",
+    "type": "Vanilla (Heston CM)",
+    "strike": 660.0,
+    "strike2": null,
+    "expiration": "2026-02-17",
+    "quantity": 1.0,
+    "avg_price": 7.193653956458044,
+    "side": "long",
+    "S0": 659.03,
+    "maturity_years": 0.24,
+    "legs": null,
+    "T_0": "2025-11-22",
+    "price": 7.193653956458044,
+    "misc": {
+      "structure": "Vanilla (Heston CM)",
+      "legs": null,
+      "strike2": null,
+      "spot_at_pricing": 659.03
+    },
+    "id": "opt_1763823198654",
+    "status": "open",
+    "created_at": "2025-11-22 14:53:18",
+    "last_updated": "2025-11-22 14:53:18",
+    "product": "Vanilla (Heston CM)",
+    "T_0_price": 7.193653956458044
+  },
+  "opt_1763823233002": {
+    "underlying": "SPY",
+    "option_type": "call",
+    "product_type": "American (CRR)",
+    "type": "American (CRR)",
+    "strike": 660.0,
+    "strike2": null,
+    "expiration": "2026-02-17",
+    "quantity": 1.0,
+    "avg_price": 24.35831101324916,
+    "side": "long",
+    "S0": 659.03,
+    "maturity_years": 0.24,
+    "legs": null,
+    "T_0": "2025-11-22",
+    "price": 24.35831101324916,
+    "misc": {
+      "structure": "American (CRR)",
+      "legs": null,
+      "strike2": null,
+      "spot_at_pricing": 659.03
+    },
+    "id": "opt_1763823233002",
+    "status": "open",
+    "created_at": "2025-11-22 14:53:52",
+    "last_updated": "2025-11-22 14:53:52",
+    "product": "American (CRR)",
+    "T_0_price": 24.35831101324916
   }
 }

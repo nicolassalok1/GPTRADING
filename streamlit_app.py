@@ -2405,10 +2405,7 @@ def run_app_options():
             st.info(f"Volatilité commune σ = {sigma:.4f}")
             st.info("Pricing asiatique via Monte Carlo + control variate (méthode notebook).")
 
-        if st.button(
-            "Calculer le prix asiatique (Call)",
-            key=_k("btn_price"),
-        ):
+        with st.expander("📈 Prix asiatique arithmétique (MC + control variate)", expanded=False):
             progress = st.progress(0)
             try:
                 n_obs_price = max(2, int(50 * float(maturity_common)))
@@ -3247,10 +3244,10 @@ def run_app_options():
 
     st.markdown("### Paramètres de Black-Scholes-Merton / Heston")
 
-    # Masquer le reste tant que les données CBOE n'ont pas été récupérées
+    # Si les données CBOE ne sont pas chargées, on continue avec les valeurs par défaut,
+    # tout en signalant qu'une récupération est recommandée pour les modules Heston.
     if not st.session_state.get("heston_cboe_loaded_once", False):
-        st.info('Clique sur "Récupérer les données du ticker" pour afficher le reste de l’application.')
-        st.stop()
+        st.info('Clique sur "Récupérer les données du ticker" pour alimenter la calibration Heston (facultatif).')
 
     if not st.session_state.get("heston_cboe_loaded_once", False):
         st.info("Charge d'abord les données CBOE (via le bloc de calibration Heston) pour afficher les paramètres.")
@@ -3274,12 +3271,18 @@ def run_app_options():
 
     col_left, col_right = st.columns(2)
 
+    def _safe_float(val, default):
+        try:
+            return float(default if val is None else val)
+        except Exception:
+            return float(default)
+
     with col_left:
         # Spot provenant des données CBOE (chargées)
-        S0_common = float(st.session_state.get("heston_S0_ref", st.session_state.get("S0_common", 0.0)))
+        S0_common = _safe_float(st.session_state.get("heston_S0_ref"), _safe_float(st.session_state.get("S0_common"), 100.0))
         st.markdown(f"**S0 (spot CBOE)** : {S0_common:.4f}")
         # La maturité de référence pour les calculs est la maturité cible choisie pour la calibration
-        T_common = float(st.session_state.get("heston_calib_T_target", st.session_state.get("T_common", 1.0)))
+        T_common = _safe_float(st.session_state.get("heston_calib_T_target"), _safe_float(st.session_state.get("T_common"), 1.0))
         st.session_state["T_common"] = T_common
         st.markdown(f"**T (maturité, années) — cible calibration** : {T_common:.4f}")
         # K issu des strikes CBOE pour T sélectionné
@@ -3598,19 +3601,20 @@ def run_app_options():
                 k_fs = st.number_input("Facteur de strike (k)", value=1.0, min_value=0.1, step=0.05, key=kk("k"))
                 n_paths_fs = st.number_input("Trajectoires MC", value=5000, min_value=500, step=500, key=kk("paths"))
                 n_steps_fs = st.number_input("Pas de temps", value=200, min_value=20, step=10, key=kk("steps"))
-                if st.button("Pricer le forward-start", key=kk("btn")):
-                    price = _forward_start_price_mc(
-                        S0=common_spot_value,
-                        r=common_rate_value,
-                        q=float(d_common),
-                        sigma=common_sigma_value,
-                        T_start=t_start,
-                        T_end=common_maturity_value,
-                        k=k_fs,
-                        n_paths=int(n_paths_fs),
-                        n_steps=int(n_steps_fs),
-                        option_type=option_char,
-                    )
+                with st.expander(f"📈 Prix forward-start ({option_label})", expanded=False):
+                    with st.spinner("Simulation Monte Carlo..."):
+                        price = _forward_start_price_mc(
+                            S0=common_spot_value,
+                            r=common_rate_value,
+                            q=float(d_common),
+                            sigma=common_sigma_value,
+                            T_start=t_start,
+                            T_end=common_maturity_value,
+                            k=k_fs,
+                            n_paths=int(n_paths_fs),
+                            n_steps=int(n_steps_fs),
+                            option_type=option_char,
+                        )
                     st.success(f"Prix forward-start ({option_label}) = {price:.6f}")
                     render_add_to_dashboard_button(
                         product_label="Forward-start",
@@ -3961,16 +3965,17 @@ def run_app_options():
 
             if structure_name == "Asian géométrique":
                 n_obs_geo = st.number_input("Observations", value=12, min_value=1, step=1, key=kk("obs"))
-                if st.button("Pricer l'asian géométrique", key=kk("btn")):
-                    price = asian_geometric_closed_form(
-                        spot=common_spot_value,
-                        strike=common_strike_value,
-                        rate=common_rate_value,
-                        sigma=common_sigma_value,
-                        maturity=common_maturity_value,
-                        n_obs=int(n_obs_geo),
-                        option_type="call" if option_char == "c" else "put",
-                    )
+                with st.expander(f"📈 Prix Asian géométrique ({option_label})", expanded=False):
+                    with st.spinner("Calcul en cours..."):
+                        price = asian_geometric_closed_form(
+                            spot=common_spot_value,
+                            strike=common_strike_value,
+                            rate=common_rate_value,
+                            sigma=common_sigma_value,
+                            maturity=common_maturity_value,
+                            n_obs=int(n_obs_geo),
+                            option_type="call" if option_char == "c" else "put",
+                        )
                     st.success(f"Prix asian géométrique ({option_label}) = {price:.6f}")
                     render_add_to_dashboard_button(
                         product_label="Asian géométrique",
@@ -3993,26 +3998,27 @@ def run_app_options():
             if structure_name == "Lookback fixed (MC)":
                 n_paths_lb = st.number_input("Trajectoires MC", value=5000, min_value=500, step=500, key=kk("paths"))
                 n_steps_lb = st.number_input("Pas de temps", value=200, min_value=10, step=10, key=kk("steps"))
-                if st.button("Pricer le lookback fixed", key=kk("btn")):
-                    dt = common_maturity_value / n_steps_lb
-                    drift = (common_rate_value - float(d_common) - 0.5 * common_sigma_value**2) * dt
-                    diff = common_sigma_value * math.sqrt(dt)
-                    disc = math.exp(-common_rate_value * common_maturity_value)
-                    payoffs = []
-                    for _ in range(int(n_paths_lb)):
-                        s = common_spot_value
-                        s_max = s_min = s
-                        for _ in range(int(n_steps_lb)):
-                            z = np.random.normal()
-                            s *= math.exp(drift + diff * z)
-                            s_max = max(s_max, s)
-                            s_min = min(s_min, s)
-                        if option_char == "c":
-                            payoff = max(s_max - common_strike_value, 0.0)
-                        else:
-                            payoff = max(common_strike_value - s_min, 0.0)
-                        payoffs.append(payoff)
-                    price = disc * float(np.mean(payoffs)) if payoffs else 0.0
+                with st.expander(f"📈 Prix Lookback fixed (MC) ({option_label})", expanded=False):
+                    with st.spinner("Simulation Monte Carlo..."):
+                        dt = common_maturity_value / n_steps_lb
+                        drift = (common_rate_value - float(d_common) - 0.5 * common_sigma_value**2) * dt
+                        diff = common_sigma_value * math.sqrt(dt)
+                        disc = math.exp(-common_rate_value * common_maturity_value)
+                        payoffs = []
+                        for _ in range(int(n_paths_lb)):
+                            s = common_spot_value
+                            s_max = s_min = s
+                            for _ in range(int(n_steps_lb)):
+                                z = np.random.normal()
+                                s *= math.exp(drift + diff * z)
+                                s_max = max(s_max, s)
+                                s_min = min(s_min, s)
+                            if option_char == "c":
+                                payoff = max(s_max - common_strike_value, 0.0)
+                            else:
+                                payoff = max(common_strike_value - s_min, 0.0)
+                            payoffs.append(payoff)
+                        price = disc * float(np.mean(payoffs)) if payoffs else 0.0
                     st.success(f"Prix lookback fixed ({option_label}) = {price:.6f}")
                     render_add_to_dashboard_button(
                         product_label="Lookback fixed",
@@ -4034,18 +4040,19 @@ def run_app_options():
                 cap = st.number_input("Cap par période", value=0.05, min_value=-1.0, step=0.01, key=kk("cap"))
                 floor = st.number_input("Floor par période", value=0.0, min_value=-1.0, step=0.01, key=kk("floor"))
                 n_paths_cliq = st.number_input("Trajectoires MC", value=3000, min_value=500, step=500, key=kk("paths"))
-                if st.button("Pricer le cliquet/ratchet", key=kk("btn")):
-                    price = _cliquet_mc(
-                        S0=common_spot_value,
-                        r=common_rate_value,
-                        q=float(d_common),
-                        sigma=common_sigma_value,
-                        T=common_maturity_value,
-                        n_periods=int(n_periods),
-                        cap=float(cap),
-                        floor=float(floor),
-                        n_paths=int(n_paths_cliq),
-                    )
+                with st.expander("📈 Prix cliquet / ratchet (MC)", expanded=False):
+                    with st.spinner("Simulation Monte Carlo..."):
+                        price = _cliquet_mc(
+                            S0=common_spot_value,
+                            r=common_rate_value,
+                            q=float(d_common),
+                            sigma=common_sigma_value,
+                            T=common_maturity_value,
+                            n_periods=int(n_periods),
+                            cap=float(cap),
+                            floor=float(floor),
+                            n_paths=int(n_paths_cliq),
+                        )
                     st.success(f"Prix cliquet/ratchet ≈ {price:.6f}")
                     render_add_to_dashboard_button(
                         product_label="Cliquet / Ratchet",
@@ -4242,34 +4249,32 @@ def run_app_options():
                     st.session_state["eu_autorun_done"] = True
                     st.rerun()
                 st.info("Clique sur le bouton pour afficher immédiatement les prix et les dropdowns d’ajout.")
-            if not eu_run_flag:
-                # Ne pas afficher le reste tant que le bouton n'a pas été cliqué
-                st.stop()
 
-            st.subheader("Heston (référence)")
-            render_method_explainer(
-                "🧮 Méthode Heston pour les options européennes",
-                (
-                    "- **Étape 1 – Choix du cadre probabiliste** : on modélise le sous‑jacent `S_t` et la variance instantanée `v_t` sous la mesure neutre au risque. `S_t` suit une diffusion où le terme de diffusion dépend de `√v_t`, et `v_t` suit un processus de type CIR avec rappel vers `θ`.\n"
-                    "- **Étape 2 – Spécification des paramètres de Heston** : on travaille avec cinq paramètres structurants : `κ` (vitesse de rappel de la variance), `θ` (variance de long terme), `σ_v` (volatilité de la variance), `ρ` (corrélation entre chocs sur `S_t` et `v_t`) et `v0` (variance initiale).\n"
-                    "- **Étape 3 – Préparation des données de marché** : les données CBOE sont téléchargées, nettoyées et ramenées sous forme de points `(S0, K, T, C_mkt)` ou `(P_mkt)`, en filtrant les maturités trop courtes et les prix non exploitables.\n"
-                    "- **Étape 4 – Construction d’un pricer rapide** : pour un jeu de paramètres Heston donné, on évalue les prix de calls européens via la méthode de Carr–Madan (transformée de Fourier) implémentée en `carr_madan_call_torch`, ce qui permet d’avoir un pricer différentiable dans PyTorch.\n"
-                    "- **Étape 5 – Définition de la fonction de perte** : on compare les prix modèle aux prix de marché sur l’ensemble des points, via une fonction de perte de type somme pondérée des carrés des écarts, éventuellement avec des poids pour privilégier certaines zones du smile.\n"
-                    "- **Étape 6 – Optimisation / calibration** : à partir d’un vecteur de paramètres non contraints `u`, on reconstruit des paramètres Heston admissibles (positivité, contraintes de Feller) puis on minimise la perte par descente de gradient ou quasi‑Newton (itérations jusqu’à `max_iters` avec un pas `learning_rate`).\n"
-                    "- **Étape 7 – Exploitation des paramètres calibrés** : une fois les paramètres calibrés obtenus, on peut pricer des options européennes, dériver des surfaces d’IV et comparer au BSM / MC.\n"
-                ),
-            )
-            render_inputs_explainer(
-                "🔧 Paramètres utilisés – Heston européen",
-                (
-                    "- **\"S0 (spot)\"** : niveau actuel du sous‑jacent, utilisé pour centrer la grille de strikes.\n"
-                    "- **\"K (strike)\"** : strike de référence saisi dans la barre latérale.\n"
-                    "- **\"T (maturité, années)\"** : maturité commune pour les surfaces.\n"
-                    "- **\"Taux sans risque r\"** et **\"Dividende continu d\"** : paramètres de taux.\n"
-                    "- **\"Ticker (sous-jacent)\"** : code CBOE utilisé pour la collecte des options.\n"
-                    "- **\"Largeur bande T (±)\"** et \"Maturité T cible\" : bornes de calibration.\n"
-                ),
-            )
+            if eu_run_flag:
+                st.subheader("Heston (référence)")
+                render_method_explainer(
+                    "🧮 Méthode Heston pour les options européennes",
+                    (
+                        "- **Étape 1 – Choix du cadre probabiliste** : on modélise le sous‑jacent `S_t` et la variance instantanée `v_t` sous la mesure neutre au risque. `S_t` suit une diffusion où le terme de diffusion dépend de `√v_t`, et `v_t` suit un processus de type CIR avec rappel vers `θ`.\n"
+                        "- **Étape 2 – Spécification des paramètres de Heston** : on travaille avec cinq paramètres structurants : `κ` (vitesse de rappel de la variance), `θ` (variance de long terme), `σ_v` (volatilité de la variance), `ρ` (corrélation entre chocs sur `S_t` et `v_t`) et `v0` (variance initiale).\n"
+                        "- **Étape 3 – Préparation des données de marché** : les données CBOE sont téléchargées, nettoyées et ramenées sous forme de points `(S0, K, T, C_mkt)` ou `(P_mkt)`, en filtrant les maturités trop courtes et les prix non exploitables.\n"
+                        "- **Étape 4 – Construction d’un pricer rapide** : pour un jeu de paramètres Heston donné, on évalue les prix de calls européens via la méthode de Carr–Madan (transformée de Fourier) implémentée en `carr_madan_call_torch`, ce qui permet d’avoir un pricer différentiable dans PyTorch.\n"
+                        "- **Étape 5 – Définition de la fonction de perte** : on compare les prix modèle aux prix de marché sur l’ensemble des points, via une fonction de perte de type somme pondérée des carrés des écarts, éventuellement avec des poids pour privilégier certaines zones du smile.\n"
+                        "- **Étape 6 – Optimisation / calibration** : à partir d’un vecteur de paramètres non contraints `u`, on reconstruit des paramètres Heston admissibles (positivité, contraintes de Feller) puis on minimise la perte par descente de gradient ou quasi‑Newton (itérations jusqu’à `max_iters` avec un pas `learning_rate`).\n"
+                        "- **Étape 7 – Exploitation des paramètres calibrés** : une fois les paramètres calibrés obtenus, on peut pricer des options européennes, dériver des surfaces d’IV et comparer au BSM / MC.\n"
+                    ),
+                )
+                render_inputs_explainer(
+                    "🔧 Paramètres utilisés – Heston européen",
+                    (
+                        "- **\"S0 (spot)\"** : niveau actuel du sous‑jacent, utilisé pour centrer la grille de strikes.\n"
+                        "- **\"K (strike)\"** : strike de référence saisi dans la barre latérale.\n"
+                        "- **\"T (maturité, années)\"** : maturité commune pour les surfaces.\n"
+                        "- **\"Taux sans risque r\"** et **\"Dividende continu d\"** : paramètres de taux.\n"
+                        "- **\"Ticker (sous-jacent)\"** : code CBOE utilisé pour la collecte des options.\n"
+                        "- **\"Largeur bande T (±)\" et \"Maturité T cible\" : bornes de calibration.\n"
+                    ),
+                )
 
             st.caption("Pricing direct avec Carr–Madan (Heston calibré).")
             with st.expander(f"📈 Prix Heston Carr–Madan ({option_label})", expanded=False):
@@ -4432,206 +4437,187 @@ def run_app_options():
             cpflag_am = option_label
             cpflag_am_char = option_char
 
-            st.subheader("Longstaff–Schwartz (Heston)")
-            render_method_explainer(
-                "🧮 L-S Heston",
-                (
-                    "- Simulation Monte Carlo avec variance stochastique calibrée Heston.\n"
-                    "- Régression backward pour l’exercice optimal.\n"
-                ),
-            )
-            heston_ready = bool(st.session_state.get("heston_cboe_loaded_once", False))
-            n_paths_am_hes = st.number_input(
-                "Trajectoires Monte Carlo (Heston)",
-                value=1000,
-                min_value=100,
-                key=_k("n_paths_am_hes"),
-                disabled=not heston_ready,
-            )
-            n_steps_am_hes = st.number_input(
-                "Pas de temps (Heston)",
-                value=50,
-                min_value=1,
-                key=_k("n_steps_am_hes"),
-                disabled=not heston_ready,
-            )
-            v0_am_hes = None
-            process_am_hes = None
-            if heston_ready:
-                kappa_am = float(st.session_state.get("heston_kappa_common", 2.0))
-                theta_am = float(st.session_state.get("heston_theta_common", 0.04))
-                eta_am = float(st.session_state.get("heston_eta_common", 0.5))
-                rho_am = float(st.session_state.get("heston_rho_common", -0.7))
-                v0_am_hes = float(st.session_state.get("heston_v0_common", 0.04))
-                process_am_hes = HestonProcess(
-                    mu=r_common - d_common, kappa=kappa_am, theta=theta_am, eta=eta_am, rho=rho_am
-                )
-                st.caption(
-                    f"Paramètres Heston : κ={kappa_am:.4f}, θ={theta_am:.4f}, η={eta_am:.4f}, ρ={rho_am:.4f}, v0={v0_am_hes:.4f}"
-                )
-            else:
-                st.caption("Heston désactivé : fais la calibration Heston pour l’activer.")
+            am_run_flag = st.session_state.get("am_autorun_done", False)
+            if not am_run_flag:
+                if st.button("🚀 Lancer tous les pricings Américain", key=_k("run_all_am"), type="primary"):
+                    st.session_state["am_autorun_done"] = True
+                    st.rerun()
+                st.info("Clique sur le bouton pour afficher immédiatement les prix et les dropdowns d’ajout.")
 
-            with st.expander(f"📈 Pricing Heston L-S ({cpflag_am})", expanded=False):
-                if not heston_ready:
-                    st.info("Calibration Heston requise.")
+            if am_run_flag:
+                st.subheader("Longstaff–Schwartz (Heston)")
+                render_method_explainer(
+                    "🧮 L-S Heston",
+                    (
+                        "- Simulation Monte Carlo avec variance stochastique calibrée Heston.\n"
+                        "- Régression backward pour l’exercice optimal.\n"
+                    ),
+                )
+                heston_ready = bool(st.session_state.get("heston_cboe_loaded_once", False))
+                n_paths_am_hes = st.number_input(
+                    "Trajectoires Monte Carlo (Heston)",
+                    value=1000,
+                    min_value=100,
+                    key=_k("n_paths_am_hes"),
+                    disabled=not heston_ready,
+                )
+                n_steps_am_hes = st.number_input(
+                    "Pas de temps (Heston)",
+                    value=50,
+                    min_value=1,
+                    key=_k("n_steps_am_hes"),
+                    disabled=not heston_ready,
+                )
+                v0_am_hes = None
+                process_am_hes = None
+                if heston_ready:
+                    kappa_am = float(st.session_state.get("heston_kappa_common", 2.0))
+                    theta_am = float(st.session_state.get("heston_theta_common", 0.04))
+                    eta_am = float(st.session_state.get("heston_eta_common", 0.5))
+                    rho_am = float(st.session_state.get("heston_rho_common", -0.7))
+                    v0_am_hes = float(st.session_state.get("heston_v0_common", 0.04))
+                    process_am_hes = HestonProcess(
+                        mu=r_common - d_common, kappa=kappa_am, theta=theta_am, eta=eta_am, rho=rho_am
+                    )
+                    st.caption(
+                        f"Paramètres Heston : κ={kappa_am:.4f}, θ={theta_am:.4f}, η={eta_am:.4f}, ρ={rho_am:.4f}, v0={v0_am_hes:.4f}"
+                    )
                 else:
-                    with st.spinner("Calcul Longstaff–Schwartz Heston..."):
+                    st.caption("Heston désactivé : fais la calibration Heston pour l’activer.")
+
+                with st.expander(f"📈 Pricing Heston L-S ({cpflag_am})", expanded=False):
+                    if not heston_ready:
+                        st.info("Calibration Heston requise.")
+                    else:
+                        with st.spinner("Calcul Longstaff–Schwartz Heston..."):
+                            try:
+                                option_ls = Option(
+                                    s0=S0_common,
+                                    T=T_common,
+                                    K=K_common,
+                                    v0=v0_am_hes,
+                                    call=(cpflag_am == "Call"),
+                                )
+                                price_ls = longstaff_schwartz_price(
+                                    option=option_ls,
+                                    process=process_am_hes,
+                                    n_paths=int(n_paths_am_hes),
+                                    n_steps=int(n_steps_am_hes),
+                                )
+                                st.success(f"Prix américain Heston L-S ({cpflag_am}) = {price_ls:.6f}")
+                                render_add_to_dashboard_button(
+                                    product_label="American (Heston L-S)",
+                                    option_char=option_char,
+                                    price_value=price_ls,
+                                    strike=K_common,
+                                    maturity=T_common,
+                                    key_prefix=_k("save_am_heston_ls"),
+                                    spot=S0_common,
+                                )
+                            except Exception as exc:
+                                st.error(f"Erreur Longstaff–Schwartz Heston : {exc}")
+                with st.expander("Heatmap Heston (L-S)", expanded=False):
+                    if heston_ready:
+                        with st.spinner("Calcul des heatmaps Heston L-S"):
+                            call_heatmap_ls, put_heatmap_ls = _compute_american_ls_heatmaps(
+                                heatmap_spot_values,
+                                heatmap_strike_values,
+                                T_common,
+                                process_am_hes,
+                                int(n_paths_am_hes),
+                                int(n_steps_am_hes),
+                                v0_am_hes,
+                            )
+                        _render_heatmaps_for_current_option(
+                            "Heston L-S",
+                            call_heatmap_ls,
+                            put_heatmap_ls,
+                            heatmap_spot_values,
+                            heatmap_strike_values,
+                        )
+                    else:
+                        st.info("Heatmap désactivée : calibration Heston requise.")
+
+                st.divider()
+
+                st.subheader("Longstaff–Schwartz (GBM)")
+                render_method_explainer(
+                    "🧮 L-S GBM",
+                    (
+                        "- Simulation GBM (volatilité constante) + régression backward.\n"
+                    ),
+                )
+                n_paths_am_gbm = st.number_input(
+                    "Trajectoires Monte Carlo (GBM)",
+                    value=1000,
+                    min_value=100,
+                    key=_k("n_paths_am_gbm"),
+                )
+                n_steps_am_gbm = st.number_input(
+                    "Pas de temps (GBM)",
+                    value=50,
+                    min_value=1,
+                    key=_k("n_steps_am_gbm"),
+                )
+                process_am_gbm = GeometricBrownianMotion(mu=r_common - d_common, sigma=sigma_common)
+
+                with st.expander(f"📈 Pricing GBM L-S ({cpflag_am})", expanded=False):
+                    with st.spinner("Calcul Longstaff–Schwartz GBM..."):
                         try:
                             option_ls = Option(
                                 s0=S0_common,
                                 T=T_common,
                                 K=K_common,
-                                v0=v0_am_hes,
+                                v0=None,
                                 call=(cpflag_am == "Call"),
                             )
                             price_ls = longstaff_schwartz_price(
                                 option=option_ls,
-                                process=process_am_hes,
-                                n_paths=int(n_paths_am_hes),
-                                n_steps=int(n_steps_am_hes),
+                                process=process_am_gbm,
+                                n_paths=int(n_paths_am_gbm),
+                                n_steps=int(n_steps_am_gbm),
                             )
-                            st.success(f"Prix américain Heston L-S ({cpflag_am}) = {price_ls:.6f}")
+                            st.success(f"Prix américain GBM L-S ({cpflag_am}) = {price_ls:.6f}")
                             render_add_to_dashboard_button(
-                                product_label="American (Heston L-S)",
+                                product_label="American (GBM L-S)",
                                 option_char=option_char,
                                 price_value=price_ls,
                                 strike=K_common,
                                 maturity=T_common,
-                                key_prefix=_k("save_am_heston_ls"),
+                                key_prefix=_k("save_am_gbm_ls"),
                                 spot=S0_common,
                             )
                         except Exception as exc:
-                            st.error(f"Erreur Longstaff–Schwartz Heston : {exc}")
-            with st.expander("Heatmap Heston (L-S)", expanded=False):
-                if heston_ready:
-                    with st.spinner("Calcul des heatmaps Heston L-S"):
+                            st.error(f"Erreur Longstaff–Schwartz GBM : {exc}")
+                with st.expander("Heatmap GBM (L-S)", expanded=False):
+                    with st.spinner("Calcul des heatmaps GBM L-S"):
                         call_heatmap_ls, put_heatmap_ls = _compute_american_ls_heatmaps(
                             heatmap_spot_values,
                             heatmap_strike_values,
                             T_common,
-                            process_am_hes,
-                            int(n_paths_am_hes),
-                            int(n_steps_am_hes),
-                            v0_am_hes,
+                            process_am_gbm,
+                            int(n_paths_am_gbm),
+                            int(n_steps_am_gbm),
+                            None,
                         )
                     _render_heatmaps_for_current_option(
-                        "Heston L-S",
+                        "GBM L-S",
                         call_heatmap_ls,
                         put_heatmap_ls,
                         heatmap_spot_values,
                         heatmap_strike_values,
                     )
-                else:
-                    st.info("Heatmap désactivée : calibration Heston requise.")
 
-            st.divider()
+                st.divider()
 
-            st.subheader("Longstaff–Schwartz (GBM)")
-            render_method_explainer(
-                "🧮 L-S GBM",
-                (
-                    "- Simulation GBM (volatilité constante) + régression backward.\n"
-                ),
-            )
-            n_paths_am_gbm = st.number_input(
-                "Trajectoires Monte Carlo (GBM)",
-                value=1000,
-                min_value=100,
-                key=_k("n_paths_am_gbm"),
-            )
-            n_steps_am_gbm = st.number_input(
-                "Pas de temps (GBM)",
-                value=50,
-                min_value=1,
-                key=_k("n_steps_am_gbm"),
-            )
-            process_am_gbm = GeometricBrownianMotion(mu=r_common - d_common, sigma=sigma_common)
-
-            with st.expander(f"📈 Pricing GBM L-S ({cpflag_am})", expanded=False):
-                with st.spinner("Calcul Longstaff–Schwartz GBM..."):
-                    try:
-                        option_ls = Option(
-                            s0=S0_common,
-                            T=T_common,
-                            K=K_common,
-                            v0=None,
-                            call=(cpflag_am == "Call"),
-                        )
-                        price_ls = longstaff_schwartz_price(
-                            option=option_ls,
-                            process=process_am_gbm,
-                            n_paths=int(n_paths_am_gbm),
-                            n_steps=int(n_steps_am_gbm),
-                        )
-                        st.success(f"Prix américain GBM L-S ({cpflag_am}) = {price_ls:.6f}")
-                        render_add_to_dashboard_button(
-                            product_label="American (GBM L-S)",
-                            option_char=option_char,
-                            price_value=price_ls,
-                            strike=K_common,
-                            maturity=T_common,
-                            key_prefix=_k("save_am_gbm_ls"),
-                            spot=S0_common,
-                        )
-                    except Exception as exc:
-                        st.error(f"Erreur Longstaff–Schwartz GBM : {exc}")
-            with st.expander("Heatmap GBM (L-S)", expanded=False):
-                with st.spinner("Calcul des heatmaps GBM L-S"):
-                    call_heatmap_ls, put_heatmap_ls = _compute_american_ls_heatmaps(
-                        heatmap_spot_values,
-                        heatmap_strike_values,
-                        T_common,
-                        process_am_gbm,
-                        int(n_paths_am_gbm),
-                        int(n_steps_am_gbm),
-                        None,
-                    )
-                _render_heatmaps_for_current_option(
-                    "GBM L-S",
-                    call_heatmap_ls,
-                    put_heatmap_ls,
-                    heatmap_spot_values,
-                    heatmap_strike_values,
+                st.subheader("Arbre binomial CRR")
+                render_method_explainer(
+                    "🌳 Arbre CRR",
+                    (
+                        "- Discrétisation de l’horizon en `n_tree_am` pas.\n"
+                        "- Recursion backward avec exercice optimal.\n"
+                    ),
                 )
-
-            st.divider()
-
-            st.subheader("Arbre binomial CRR")
-            render_method_explainer(
-                "🌳 Arbre CRR",
-                (
-                    "- Discrétisation de l’horizon en `n_tree_am` pas.\n"
-                    "- Recursion backward avec exercice optimal.\n"
-                ),
-            )
-            if st.button(
-                f"Calculer le prix américain CRR ({cpflag_am})",
-                key=_k("btn_price_am_crr"),
-            ):
-                try:
-                    option_am_single = Option(
-                        s0=S0_common,
-                        T=T_common,
-                        K=K_common,
-                        call=(cpflag_am == 'Call'),
-                    )
-                    n_steps_single = 50
-                    price_crr_single = crr_pricing(
-                        r=r_common,
-                        sigma=sigma_common,
-                        option=option_am_single,
-                        n=n_steps_single,
-                    )
-                    st.success(f"Prix américain CRR ({cpflag_am}) ≈ {price_crr_single:.6f} (avec {n_steps_single} pas)")
-                except Exception as exc:
-                    st.error(f"Erreur CRR : {exc}")
-            st.caption(
-                f"Paramètres utilisés pour le prix unique CRR : "
-                f"S0={S0_common:.4f}, K={K_common:.4f}, T={T_common:.4f}, "
-                f"r={r_common:.4f}, σ={sigma_common:.4f}"
-            )
-
             n_tree_am = st.number_input(
                 "Nombre de pas de l'arbre",
                 value=10,
@@ -4643,7 +4629,33 @@ def run_app_options():
             int_n_tree = int(n_tree_am)
             if int_n_tree > 10:
                 st.info("L'affichage peut devenir difficile à lire pour un nombre de pas supérieur à 10.")
-            with st.expander("Afficher l'arbre CRR et la heatmap", expanded=False):
+            with st.expander(f"📈 Pricing CRR ({cpflag_am}) + heatmap", expanded=False):
+                with st.spinner("Calcul du prix CRR"):
+                    try:
+                        option_am_single = Option(
+                            s0=S0_common,
+                            T=T_common,
+                            K=K_common,
+                            call=(cpflag_am == 'Call'),
+                        )
+                        price_crr_single = crr_pricing(
+                            r=r_common,
+                            sigma=sigma_common,
+                            option=option_am_single,
+                            n=int_n_tree,
+                        )
+                        st.success(f"Prix américain CRR ({cpflag_am}) ≈ {price_crr_single:.6f} (avec {int_n_tree} pas)")
+                        render_add_to_dashboard_button(
+                            product_label="American (CRR)",
+                            option_char=option_char,
+                            price_value=price_crr_single,
+                            strike=K_common,
+                            maturity=T_common,
+                            key_prefix=_k("save_am_crr"),
+                            spot=S0_common,
+                        )
+                    except Exception as exc:
+                        st.error(f"Erreur CRR : {exc}")
                 with st.spinner("Construction de l'arbre CRR"):
                     spot_tree, value_tree = _build_crr_tree(
                         option=option_am_crr, r=r_common, sigma=sigma_common, n_steps=int_n_tree
@@ -4669,11 +4681,22 @@ def run_app_options():
                     heatmap_spot_values,
                     heatmap_strike_values,
                 )
+            st.caption(
+                f"Paramètres utilisés pour CRR : "
+                f"S0={S0_common:.4f}, K={K_common:.4f}, T={T_common:.4f}, "
+                f"r={r_common:.4f}, σ={sigma_common:.4f}, n={int_n_tree}"
+            )
 
 
         with tab_lookback:
             st.header("Options lookback (floating strike)")
             render_unlock_sidebar_button("tab_lookback", "🔓 Réactiver T (onglet Lookback)")
+            lb_run_flag = st.session_state.get(_k("run_path_lookback_done"), False)
+            if not lb_run_flag:
+                if st.button("🚀 Lancer tous les pricings Lookback", key=_k("run_path_lookback_btn"), type="primary"):
+                    st.session_state[_k("run_path_lookback_done")] = True
+                    st.rerun()
+                st.info("Clique pour lancer les pricings Lookback et afficher les dropdowns.")
             render_general_definition_explainer(
                 "🔍 Comprendre les options lookback",
                 (
@@ -4719,19 +4742,17 @@ def run_app_options():
                 help="Temps déjà écoulé depuis l’émission de l’option lookback (en années).",
             )
             r_lb = max(r_common, 1e-6)
-            if st.button(
-                "Calculer le prix lookback exact",
-                key=_k("btn_price_lb_exact"),
-            ):
+            with st.expander("📈 Prix lookback exact", expanded=False):
                 try:
-                    lookback_opt = lookback_call_option(
-                        T=float(T_common),
-                        t=float(t0_lb),
-                        S0=float(common_spot_value),
-                        r=float(r_lb),
-                        sigma=float(sigma_common),
-                    )
-                    price_lb_exact = float(lookback_opt.price_exact())
+                    with st.spinner("Calcul du prix exact..."):
+                        lookback_opt = lookback_call_option(
+                            T=float(T_common),
+                            t=float(t0_lb),
+                            S0=float(common_spot_value),
+                            r=float(r_lb),
+                            sigma=float(sigma_common),
+                        )
+                        price_lb_exact = float(lookback_opt.price_exact())
                     st.success(f"Prix lookback (formule exacte) = {price_lb_exact:.6f}")
                 except Exception as exc:
                     st.error(f"Erreur lookback (formule exacte) : {exc}")
@@ -4792,10 +4813,7 @@ def run_app_options():
                 help="Nombre de trajectoires lookback simulées pour chaque couple (S0, T).",
             )
             r_lb_mc = max(r_common, 1e-6)
-            if st.button(
-                "Calculer le prix lookback MC",
-                key=_k("btn_price_lb_mc"),
-            ):
+            with st.expander("📈 Prix lookback Monte Carlo", expanded=False):
                 progress = st.progress(0)
                 try:
                     lookback_opt_mc = lookback_call_option(
@@ -5298,6 +5316,14 @@ def run_app_options():
             cpflag_bmd = option_label
             cpflag_bmd_char = option_char
             st.caption("Type fixé par l’onglet Call / Put en haut de page.")
+
+            bmd_run_flag = st.session_state.get("bmd_autorun_done", False)
+            if not bmd_run_flag:
+                if st.button("🚀 Lancer le pricing Bermuda", key=_k("run_all_bmd"), type="primary"):
+                    st.session_state["bmd_autorun_done"] = True
+                    st.rerun()
+                st.info("Clique sur le bouton pour afficher les dropdowns et lancer le pricing Bermuda.")
+
             n_ex_dates_bmd = st.slider(
                 "Nombre de dates d'exercice Bermude",
                 min_value=2,
@@ -5413,15 +5439,22 @@ def run_app_options():
 
 
         with tab_asian:
-            ui_asian_options(
-                spot_default=common_spot_value,
-                sigma_common=common_sigma_value,
-                maturity_common=common_maturity_value,
-                strike_common=common_strike_value,
-                rate_common=common_rate_value,
-                key_prefix=_k("asian"),
-                option_char=option_char,
-            )
+            run_flag = st.session_state.get(_k("run_path_asian_done"), False)
+            if not run_flag:
+                if st.button("🚀 Lancer tous les pricings Asian", key=_k("run_path_asian_btn"), type="primary"):
+                    st.session_state[_k("run_path_asian_done")] = True
+                    st.rerun()
+                st.info("Clique pour lancer les pricings et afficher les dropdowns Asian.")
+            else:
+                ui_asian_options(
+                    spot_default=common_spot_value,
+                    sigma_common=common_sigma_value,
+                    maturity_common=common_maturity_value,
+                    strike_common=common_strike_value,
+                    rate_common=common_rate_value,
+                    key_prefix=_k("asian"),
+                    option_char=option_char,
+                )
 
         with tab_iron_condor:
             _render_structure_panel("Iron Condor")
@@ -5433,7 +5466,14 @@ def run_app_options():
             _render_structure_panel("Asset-or-nothing")
 
         with tab_forward_start:
-            _render_structure_panel("Forward-start option")
+            run_flag = st.session_state.get(_k("run_path_forward_done"), False)
+            if not run_flag:
+                if st.button("🚀 Lancer tous les pricings Forward-start", key=_k("run_path_forward_btn"), type="primary"):
+                    st.session_state[_k("run_path_forward_done")] = True
+                    st.rerun()
+                st.info("Clique pour lancer les pricings Forward-start et afficher les dropdowns.")
+            else:
+                _render_structure_panel("Forward-start option")
 
         with tab_chooser:
             _render_structure_panel("Chooser option")
@@ -5469,13 +5509,34 @@ def run_app_options():
             _render_structure_panel("Binary barrier (digital)")
 
         with tab_asian_geo:
-            _render_structure_panel("Asian géométrique")
+            run_flag = st.session_state.get(_k("run_path_asian_geo_done"), False)
+            if not run_flag:
+                if st.button("🚀 Lancer tous les pricings Asian géométrique", key=_k("run_path_asian_geo_btn"), type="primary"):
+                    st.session_state[_k("run_path_asian_geo_done")] = True
+                    st.rerun()
+                st.info("Clique pour lancer les pricings Asian géométrique et afficher les dropdowns.")
+            else:
+                _render_structure_panel("Asian géométrique")
 
         with tab_lookback_fixed:
-            _render_structure_panel("Lookback fixed (MC)")
+            run_flag = st.session_state.get(_k("run_path_lookback_fixed_done"), False)
+            if not run_flag:
+                if st.button("🚀 Lancer tous les pricings Lookback fixed", key=_k("run_path_lookback_fixed_btn"), type="primary"):
+                    st.session_state[_k("run_path_lookback_fixed_done")] = True
+                    st.rerun()
+                st.info("Clique pour lancer les pricings Lookback fixed et afficher les dropdowns.")
+            else:
+                _render_structure_panel("Lookback fixed (MC)")
 
         with tab_cliquet:
-            _render_structure_panel("Cliquet / Ratchet (MC)")
+            run_flag = st.session_state.get(_k("run_path_cliquet_done"), False)
+            if not run_flag:
+                if st.button("🚀 Lancer tous les pricings Cliquet / Ratchet", key=_k("run_path_cliquet_btn"), type="primary"):
+                    st.session_state[_k("run_path_cliquet_done")] = True
+                    st.rerun()
+                st.info("Clique pour lancer les pricings Cliquet / Ratchet et afficher les dropdowns.")
+            else:
+                _render_structure_panel("Cliquet / Ratchet (MC)")
 
         with tab_quanto:
             _render_structure_panel("Quanto option")
