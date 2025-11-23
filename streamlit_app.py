@@ -7028,65 +7028,98 @@ with tab1:
                 except Exception:
                     return default
             for key, pos in custom_opts.items():
-                underlying = pos.get("underlying")
-                option_type_raw = (
-                    pos.get("option_type")
-                    or pos.get("cpflag")
-                    or pos.get("cp_flag")
-                    or pos.get("cp")
-                    or ""
-                )
-                if not option_type_raw:
-                    t_val = str(pos.get("type", "")).lower()
-                    if t_val in {"call", "put"}:
-                        option_type_raw = t_val
-                option_type = str(option_type_raw).lower()
-                strike = _safe_f(pos.get("strike", 0.0), 0.0)
-                strike2_val = pos.get("strike2")
-                strike2 = _safe_f(strike2_val, None) if strike2_val not in (None, "") else None
-                quantity = _safe_f(pos.get("quantity", 0), 0.0)
-                avg_price = _safe_f(pos.get("avg_price", pos.get("T_0_price", 0.0)), 0.0)
-                side = pos.get("side", "long").lower()
-                product = (
-                    pos.get("product_type")
-                    or pos.get("structure")
-                    or pos.get("product")
-                    or pos.get("type")
-                    or "vanilla"
-                )
-                misc = pos.get("misc")
+                try:
+                    underlying = pos.get("underlying")
+                    option_type_raw = (
+                        pos.get("option_type")
+                        or pos.get("cpflag")
+                        or pos.get("cp_flag")
+                        or pos.get("cp")
+                        or ""
+                    )
+                    if not option_type_raw:
+                        t_val = str(pos.get("type", "")).lower()
+                        if t_val in {"call", "put"}:
+                            option_type_raw = t_val
+                    option_type = str(option_type_raw).lower()
+                    strike = _safe_f(pos.get("strike", 0.0), 0.0)
+                    strike2_val = pos.get("strike2")
+                    strike2 = _safe_f(strike2_val, None) if strike2_val not in (None, "") else None
+                    quantity = _safe_f(pos.get("quantity", 0), 0.0)
+                    avg_price = _safe_f(pos.get("avg_price", pos.get("T_0_price", 0.0)), 0.0)
+                    side = pos.get("side", "long").lower()
+                    product = (
+                        pos.get("product_type")
+                        or pos.get("structure")
+                        or pos.get("product")
+                        or pos.get("type")
+                        or "vanilla"
+                    )
+                    misc = pos.get("misc")
 
-                chain_list = chains_by_underlying_custom.get(underlying, [])
-                chain_entry = None
-                if chain_list:
-                    try:
-                        expiry_date = datetime.date.fromisoformat(pos.get("expiration"))
-                        days_to_expiry = (expiry_date - datetime.date.today()).days
-                        target_T = max(days_to_expiry, 0) / 365.0
-                    except Exception:
-                        target_T = None
+                    chain_list = chains_by_underlying_custom.get(underlying, [])
+                    chain_entry = None
+                    if chain_list:
+                        try:
+                            expiry_date = datetime.date.fromisoformat(pos.get("expiration"))
+                            days_to_expiry = (expiry_date - datetime.date.today()).days
+                            target_T = max(days_to_expiry, 0) / 365.0
+                        except Exception:
+                            target_T = None
 
-                    if target_T is not None and strike > 0:
-                        nearest = None
-                        best_score = float("inf")
-                        for c in chain_list:
-                            cT = float(c.get("T", 0.0) or 0.0)
-                            cK = float(c.get("strike", 0.0) or 0.0)
-                            scale = max(strike, 1.0)
-                            score = abs(cT - target_T) + abs(cK - strike) / scale
-                            if score < best_score:
-                                best_score = score
-                                nearest = c
-                        chain_entry = nearest
+                        if target_T is not None and strike > 0:
+                            nearest = None
+                            best_score = float("inf")
+                            for c in chain_list:
+                                cT = float(c.get("T", 0.0) or 0.0)
+                                cK = float(c.get("strike", 0.0) or 0.0)
+                                scale = max(strike, 1.0)
+                                score = abs(cT - target_T) + abs(cK - strike) / scale
+                                if score < best_score:
+                                    best_score = score
+                                    nearest = c
+                            chain_entry = nearest
 
-            spot, T_years, sigma_used, mark_price, mark_method = mark_option_market_value(pos, chain_entry=chain_entry)
-            has_price = mark_price is not None and mark_price > 0
+                    spot, T_years, sigma_used, mark_price, mark_method = mark_option_market_value(pos, chain_entry=chain_entry)
+                    has_price = mark_price is not None and mark_price > 0
 
-        if side == "long":
-            pnl_per_unit = mark_price - avg_price
-        else:
-            pnl_per_unit = avg_price - mark_price
-        total_pnl_opt = pnl_per_unit * quantity
+                    if side == "long":
+                        pnl_per_unit = mark_price - avg_price
+                    else:
+                        pnl_per_unit = avg_price - mark_price
+                    total_pnl_opt = pnl_per_unit * quantity
+
+                    mark_map[key] = {
+                        "spot": spot,
+                        "T": T_years,
+                        "sigma": sigma_used,
+                        "mark_price": mark_price,
+                        "method": mark_method,
+                        "pnl": total_pnl_opt,
+                        "pnl_per_unit": pnl_per_unit,
+                    }
+
+                    rows_custom.append({
+                        "ID/Contract": key,
+                        "Product": product,
+                        "Underlying": underlying,
+                        "Type": option_type.capitalize(),
+                        "Side": side.capitalize(),
+                        "Strike": strike,
+                        "Strike2": strike2,
+                        "Expiration": pos.get("expiration"),
+                        "Quantity": quantity,
+                        "T_0 Price": avg_price,
+                        "Current Price (model)": mark_price,
+                        "Model P&L": total_pnl_opt,
+                        "Misc (json)": json.dumps(misc or {}, ensure_ascii=False),
+                    })
+                except Exception as exc:
+                    rows_custom.append({
+                        "ID/Contract": key,
+                        "Product": pos.get("product"),
+                        "Error": str(exc),
+                    })
 
         mark_map[key] = {
             "spot": spot,
