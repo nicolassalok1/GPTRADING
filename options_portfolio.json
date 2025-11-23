@@ -259,5 +259,36 @@
     "last_updated": "2025-11-22 14:53:52",
     "product": "American (CRR)",
     "T_0_price": 24.35831101324916
+  },
+  "opt_1763895659940": {
+    "underlying": "SPY",
+    "option_type": "call",
+    "product_type": "Asian arithm\u00e9tique",
+    "type": "Asian arithm\u00e9tique",
+    "strike": 100.0,
+    "strike2": null,
+    "expiration": "2026-11-23",
+    "quantity": 1.0,
+    "avg_price": 4.6703388650284134,
+    "side": "long",
+    "S0": 100.0,
+    "maturity_years": 1.0,
+    "legs": null,
+    "T_0": "2025-11-23",
+    "price": 4.6703388650284134,
+    "misc": {
+      "method": "MC control variate",
+      "n_obs": 50,
+      "n_paths": 20000,
+      "sigma": 0.2,
+      "r": 1e-06,
+      "q": 0.0
+    },
+    "id": "opt_1763895659940",
+    "status": "open",
+    "created_at": "2025-11-23 11:00:59",
+    "last_updated": "2025-11-23 11:00:59",
+    "product": "Asian arithm\u00e9tique",
+    "T_0_price": 4.6703388650284134
   }
 }
