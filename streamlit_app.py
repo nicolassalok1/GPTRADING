@@ -23,6 +23,7 @@ OPTIONS_PORTFOLIO_FILE = OPTIONS_BOOK_FILE  # legacy name kept for compatibility
 EXPIRED_OPTIONS_FILE = OPTIONS_BOOK_FILE    # legacy name kept for compatibility
 CUSTOM_OPTIONS_FILE = APP_DIR / "custom_options.json"
 FORWARDS_FILE = APP_DIR / "forwards.json"
+LEGACY_EXPIRED_FILE = APP_DIR / "expired_options.json"
 load_dotenv()
 
 def run_app_options():
@@ -5843,6 +5844,7 @@ def save_options_portfolio(options_portfolio):
 
 
 def load_expired_options():
+    migrate_legacy_expired_options()
     _, expired = _split_options_book(load_options_book())
     return expired
 
@@ -5856,6 +5858,41 @@ def save_expired_options(expired_options):
         book[option_id] = entry_copy
     save_options_book(book)
     return book
+
+
+def migrate_legacy_expired_options():
+    """Move legacy expired_options.json entries into the unified book schema."""
+    if not LEGACY_EXPIRED_FILE.exists():
+        return
+    try:
+        with open(LEGACY_EXPIRED_FILE, "r") as f:
+            legacy = json.load(f)
+    except Exception:
+        return
+    if not isinstance(legacy, dict) or not legacy:
+        try:
+            LEGACY_EXPIRED_FILE.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return
+    book = load_options_book()
+    changed = False
+    for option_id, entry in legacy.items():
+        entry_copy = dict(entry)
+        entry_copy["status"] = "expired"
+        entry_copy.setdefault("option_type", entry_copy.get("type", ""))
+        entry_copy.setdefault("product", entry_copy.get("product_type", entry_copy.get("structure", "vanilla")))
+        entry_copy.setdefault("side", entry_copy.get("side", "long"))
+        entry_copy.setdefault("quantity", entry_copy.get("quantity", entry_copy.get("qty", 0)))
+        entry_copy.setdefault("avg_price", entry_copy.get("avg_price", entry_copy.get("T_0_price", 0.0)))
+        book[option_id] = entry_copy
+        changed = True
+    if changed:
+        save_options_book(book)
+    try:
+        LEGACY_EXPIRED_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
 
 
 def _compute_leg_payoff(leg: dict, spot: float) -> float:
@@ -5935,6 +5972,10 @@ def mark_option_market_value(option: dict, chain_entry: dict | None = None) -> t
     underlying = option.get("underlying")
     spot_data = get_data(underlying) if underlying else {"price": 0}
     spot = float(spot_data.get("price", 0.0) or 0.0)
+    # Fallback to provided S0 if live spot not available
+    if spot <= 0:
+        spot = float(option.get("S0", 0.0) or 0.0)
+
     sigma = float(option.get("sigma", 0.2) or 0.2)
     option_type = (option.get("option_type") or option.get("type") or "").lower()
     strike = float(option.get("strike", 0.0) or 0.0)
@@ -6804,6 +6845,30 @@ with tab1:
                 delta=f"{total_pnl_pct:.2f}%",
             )
 
+        st.markdown("### ✅ Options expirées / clôturées")
+        if expired_options:
+            exp_rows = []
+            for key, opt in expired_options.items():
+                exp_rows.append({
+                    "ID/Contract": key,
+                    "Underlying": opt.get("underlying"),
+                    "Type": str(opt.get("option_type") or opt.get("type", "")).capitalize(),
+                    "Side": str(opt.get("side", "")).capitalize(),
+                    "Strike": opt.get("strike"),
+                    "Expiration": opt.get("expiration"),
+                    "Qty": opt.get("quantity"),
+                    "Avg Price": opt.get("avg_price"),
+                    "Underlying close": opt.get("underlying_close"),
+                    "Payoff/unit": opt.get("payoff_per_unit"),
+                    "PnL/unit": opt.get("pnl_per_unit"),
+                    "PnL total": opt.get("pnl_total"),
+                    "Closed at": opt.get("closed_at"),
+                })
+            df_exp = pd.DataFrame(exp_rows)
+            st.dataframe(df_exp, width="stretch", hide_index=True)
+        else:
+            st.info("Aucune option expirée/close pour l’instant.")
+
         # Forward portfolio section
         st.markdown("---")
         st.markdown("### 🚀 Forward Portfolio")
@@ -6887,6 +6952,11 @@ with tab1:
                     return "cliquet_pricer", ["n_periods", "cap", "floor", "sigma", "S0", "r", "q", "n_paths"]
                 return "vanilla_bsm", ["option_type", "strike", "expiration", "sigma", "S0", "r", "q"]
             rows_custom = []
+            def _safe_f(val, default=0.0):
+                try:
+                    return float(val)
+                except Exception:
+                    return default
             for key, pos in custom_opts.items():
                 underlying = pos.get("underlying")
                 option_type_raw = (
@@ -6901,11 +6971,11 @@ with tab1:
                     if t_val in {"call", "put"}:
                         option_type_raw = t_val
                 option_type = str(option_type_raw).lower()
-                strike = float(pos.get("strike", 0.0) or 0.0)
+                strike = _safe_f(pos.get("strike", 0.0), 0.0)
                 strike2_val = pos.get("strike2")
-                strike2 = float(strike2_val) if strike2_val not in (None, "") else None
-                quantity = float(pos.get("quantity", 0) or 0)
-                avg_price = float(pos.get("avg_price", 0.0) or 0.0)
+                strike2 = _safe_f(strike2_val, None) if strike2_val not in (None, "") else None
+                quantity = _safe_f(pos.get("quantity", 0), 0.0)
+                avg_price = _safe_f(pos.get("avg_price", pos.get("T_0_price", 0.0)), 0.0)
                 side = pos.get("side", "long").lower()
                 product = (
                     pos.get("product_type")
@@ -6939,180 +7009,185 @@ with tab1:
                                 nearest = c
                         chain_entry = nearest
 
-                spot, T_years, sigma_used, mark_price, mark_method = mark_option_market_value(pos, chain_entry=chain_entry)
+            spot, T_years, sigma_used, mark_price, mark_method = mark_option_market_value(pos, chain_entry=chain_entry)
+            has_price = mark_price is not None and mark_price > 0
 
-                if side == "long":
-                    pnl_per_unit = mark_price - avg_price
-                else:
-                    pnl_per_unit = avg_price - mark_price
-                total_pnl_opt = pnl_per_unit * quantity
+        if side == "long":
+            pnl_per_unit = mark_price - avg_price
+        else:
+            pnl_per_unit = avg_price - mark_price
+        total_pnl_opt = pnl_per_unit * quantity
 
-                mark_map[key] = {
-                    "spot": spot,
-                    "T": T_years,
-                    "sigma": sigma_used,
-                    "mark_price": mark_price,
-                    "method": mark_method,
-                    "pnl": total_pnl_opt,
-                    "pnl_per_unit": pnl_per_unit,
-                }
+        mark_map[key] = {
+            "spot": spot,
+            "T": T_years,
+            "sigma": sigma_used,
+            "mark_price": mark_price,
+            "method": mark_method,
+            "pnl": total_pnl_opt,
+            "pnl_per_unit": pnl_per_unit,
+        }
 
-                rows_custom.append({
-                    "ID/Contract": key,
-                    "Product": product,
-                    "Underlying": underlying,
-                    "Type": option_type.capitalize(),
-                    "Side": side.capitalize(),
-                    "Strike": strike,
-                    "Strike2": strike2,
-                    "Expiration": pos.get("expiration"),
-                    "Quantity": quantity,
-                    "T_0 Price": f"${avg_price:.3f}",
-                    "Current Price (model)": f"${mark_price:.4f}",
-                    "Model P&L": f"${total_pnl_opt:.2f}",
-                    "Misc keys": ", ".join(sorted(misc.keys())) if isinstance(misc, dict) else "",
-                })
+        rows_custom.append({
+            "ID/Contract": key,
+            "Product": product,
+            "Underlying": underlying,
+            "Type": option_type.capitalize(),
+            "Side": side.capitalize(),
+            "Strike": strike,
+            "Strike2": strike2,
+            "Expiration": pos.get("expiration"),
+            "Quantity": quantity,
+            "T_0 Price": f"${avg_price:.3f}",
+            "Current Price (model)": f"${mark_price:.4f}",
+            "Model P&L": f"${total_pnl_opt:.2f}",
+            "Misc keys": ", ".join(sorted(misc.keys())) if isinstance(misc, dict) else "",
+        })
 
-            if rows_custom:
-                df_custom = pd.DataFrame(rows_custom)
-                st.dataframe(df_custom, width="stretch", hide_index=True)
-                st.markdown("#### Manage custom options")
-                for key, pos in custom_opts.items():
-                    snap = mark_map.get(key, {})
-                    spot = float(snap.get("spot") or 0.0)
-                    mark_price = float(snap.get("mark_price") or 0.0)
-                    pnl_total = float(snap.get("pnl") or 0.0)
-                    pnl_per_unit = float(snap.get("pnl_per_unit") or 0.0)
-                    method = snap.get("method", "n/a")
-                    sigma_used = float(snap.get("sigma") or 0.0)
-                    T_years = snap.get("T")
+        if rows_custom:
+            df_custom = pd.DataFrame(rows_custom)
+            st.dataframe(df_custom, width="stretch", hide_index=True)
+            st.markdown("#### Manage custom options")
+            for key, pos in custom_opts.items():
+                snap = mark_map.get(key, {})
+                spot = float(snap.get("spot") or 0.0)
+                mark_price = float(snap.get("mark_price") or 0.0)
+                pnl_total = float(snap.get("pnl") or 0.0)
+                pnl_per_unit = float(snap.get("pnl_per_unit") or 0.0)
+                method = snap.get("method", "n/a")
+                sigma_used = float(snap.get("sigma") or 0.0)
+                T_years = snap.get("T")
 
-                    strike = pos.get("strike")
-                    qty = pos.get("quantity")
-                    if qty is None:
-                        qty = 0
-                    avg_price = pos.get("avg_price")
-                    if avg_price is None:
-                        avg_price = pos.get("T_0_price", 0.0)
-                    avg_price = float(avg_price or 0.0)
-                    side = pos.get("side", "long").lower()
-                    product = (
-                        pos.get("product_type")
-                        or pos.get("structure")
-                        or pos.get("product")
-                        or pos.get("type")
-                        or "vanilla"
+                strike = pos.get("strike")
+                qty = pos.get("quantity")
+                if qty is None:
+                    qty = 0
+                avg_price = pos.get("avg_price")
+                if avg_price is None:
+                    avg_price = pos.get("T_0_price", 0.0)
+                avg_price = float(avg_price or 0.0)
+                side = pos.get("side", "long").lower()
+                product = (
+                    pos.get("product_type")
+                    or pos.get("structure")
+                    or pos.get("product")
+                    or pos.get("type")
+                    or "vanilla"
+                )
+                underlying = pos.get("underlying")
+                option_type_raw = (
+                    pos.get("option_type")
+                    or pos.get("cpflag")
+                    or pos.get("cp_flag")
+                    or pos.get("cp")
+                    or ""
+                )
+                if not option_type_raw:
+                    t_val = str(pos.get("type", "")).lower()
+                    if t_val in {"call", "put"}:
+                        option_type_raw = t_val
+                option_type = str(option_type_raw).lower()
+                strike2_val = pos.get("strike2")
+                strike2 = float(strike2_val) if strike2_val not in (None, "") else None
+                misc = pos.get("misc")
+                pricing_fn, needed = _pricing_metadata(product)
+                product_low = product.lower() if product else ""
+                available = set(k for k in [
+                    "option_type",
+                    "strike" if strike is not None else None,
+                    "strike2" if strike2 is not None else None,
+                    "expiration" if pos.get("expiration") else None,
+                    "quantity" if qty else None,
+                    "sigma" if sigma_used else None,
+                    "S0" if spot else None,
+                    "legs (strike/side/type)" if pos.get("legs") else None,
+                ] if k)
+                # We can compute r/q from rates_utils
+                available.update({"r", "q"})
+                # For spreads/structures without explicit legs, consider strike/strike2 as leg info
+                if any(keyword in product_low for keyword in ["spread", "butterfly", "condor", "straddle", "strangle"]):
+                    available.add("legs (strike/side/type)")
+                if isinstance(misc, dict):
+                    available.update(misc.keys())
+                    if "barrier" in product_low and "knock" in misc and "direction" not in available:
+                        available.add("direction")
+                missing = set(needed) - available
+                extra = available - set(needed)
+                btn_label = "Close"
+                close_max = max(1, int(qty)) if qty and qty > 0 else 1
+
+                with st.expander(f"{key} ({product})"):
+                    side_label = side.upper() if side else "N/A"
+                    opt_label = option_type.upper() if option_type else "N/A"
+                    st.caption(f"Produit reconnu: {product} | Option type: {opt_label} | Side: {side_label}")
+                    close_qty = st.selectbox(
+                        "Quantity to close",
+                        options=list(range(1, close_max + 1)),
+                        index=close_max - 1 if close_max > 0 else 0,
+                        key=f"close_qty_{key}",
                     )
-                    underlying = pos.get("underlying")
-                    option_type_raw = (
-                        pos.get("option_type")
-                        or pos.get("cpflag")
-                        or pos.get("cp_flag")
-                        or pos.get("cp")
-                        or ""
-                    )
-                    if not option_type_raw:
-                        t_val = str(pos.get("type", "")).lower()
-                        if t_val in {"call", "put"}:
-                            option_type_raw = t_val
-                    option_type = str(option_type_raw).lower()
-                    strike2_val = pos.get("strike2")
-                    strike2 = float(strike2_val) if strike2_val not in (None, "") else None
-                    misc = pos.get("misc")
-                    pricing_fn, needed = _pricing_metadata(product)
-                    product_low = product.lower() if product else ""
-                    available = set(k for k in [
-                        "option_type",
-                        "strike" if strike is not None else None,
-                        "strike2" if strike2 is not None else None,
-                        "expiration" if pos.get("expiration") else None,
-                        "quantity" if qty else None,
-                        "sigma" if sigma_used else None,
-                        "S0" if spot else None,
-                        "legs (strike/side/type)" if pos.get("legs") else None,
-                    ] if k)
-                    # We can compute r/q from rates_utils
-                    available.update({"r", "q"})
-                    # For spreads/structures without explicit legs, consider strike/strike2 as leg info
-                    if any(keyword in product_low for keyword in ["spread", "butterfly", "condor", "straddle", "strangle"]):
-                        available.add("legs (strike/side/type)")
-                    if isinstance(misc, dict):
-                        available.update(misc.keys())
-                        if "barrier" in product_low and "knock" in misc and "direction" not in available:
-                            available.add("direction")
-                    missing = set(needed) - available
-                    extra = available - set(needed)
-                    btn_label = "Close"
-                    close_max = max(1, int(qty)) if qty and qty > 0 else 1
-
-                    with st.expander(f"{key} ({product})"):
-                        side_label = side.upper() if side else "N/A"
-                        opt_label = option_type.upper() if option_type else "N/A"
-                        st.caption(f"Produit reconnu: {product} | Option type: {opt_label} | Side: {side_label}")
-                        close_qty = st.selectbox(
-                            "Quantity to close",
-                            options=list(range(1, close_max + 1)),
-                            index=close_max - 1 if close_max > 0 else 0,
-                            key=f"close_qty_{key}",
+                    col_a, col_b, col_c = st.columns(3)
+                    with col_a:
+                        st.metric("Prix actuel", f"${mark_price:.4f}")
+                        st.caption(
+                            f"S = {spot:.4f} | K = {strike}"
+                            + (f" | K2 = {strike2}" if strike2 is not None else "")
                         )
-                        col_a, col_b, col_c = st.columns(3)
-                        with col_a:
-                            st.metric("Prix actuel", f"${mark_price:.4f}")
-                            st.caption(
-                                f"S = {spot:.4f} | K = {strike}"
-                                + (f" | K2 = {strike2}" if strike2 is not None else "")
-                            )
-                            st.caption(
-                                f"T = {T_years:.4f}" if T_years is not None else "T inconnu"
-                            )
-                            st.caption(f"Méthode: {method} | σ={sigma_used:.4f}")
-                        with col_b:
-                            st.metric("T_0 Price", f"${avg_price:.4f}")
-                            st.metric("Qty", f"{qty}")
-                        with col_c:
-                            st.metric("PnL if closed", f"${pnl_total:.2f}", delta=f"{pnl_per_unit:.4f}")
-                        if isinstance(misc, dict) and misc:
-                            st.caption(f"Misc: {misc}")
-                        st.caption(f"Pricing fn: {pricing_fn}")
-                        st.caption(f"Paramètres requis: {needed}")
-                        st.caption(f"Paramètres disponibles: {sorted(available)}")
-                        if missing:
-                            st.markdown(f"🟥 Paramètres manquants: {sorted(missing)}")
-                        elif extra:
-                            st.markdown(f"🟨 Paramètres en trop: {sorted(extra)}")
+                        st.caption(
+                            f"T = {T_years:.4f}" if T_years is not None else "T inconnu"
+                        )
+                        st.caption(f"Méthode: {method} | σ={sigma_used:.4f}")
+                    with col_b:
+                        st.metric("T_0 Price", f"${avg_price:.4f}")
+                        st.metric("Qty", f"{qty}")
+                    with col_c:
+                        st.metric("PnL if closed", f"${pnl_total:.2f}", delta=f"{pnl_per_unit:.4f}")
+                    if isinstance(misc, dict) and misc:
+                        st.caption(f"Misc: {misc}")
+                    st.caption(f"Pricing fn: {pricing_fn}")
+                    st.caption(f"Paramètres requis: {needed}")
+                    st.caption(f"Paramètres disponibles: {sorted(available)}")
+                    if missing:
+                        st.markdown(f"🔴 Paramètres manquants: {sorted(missing)}")
+                    elif extra:
+                        st.markdown(f"🟨 Paramètres en trop: {sorted(extra)}")
+                    else:
+                        st.markdown("🟩 Paramètres OK pour pricer")
+
+                    price_issue = not has_price or mark_price <= 0
+                    if price_issue:
+                        st.markdown("🔴 PnL non calculable : prix de marché/spot manquant.")
+
+                    if st.button(f"✅ {btn_label}", key=f"close_custom_{key}", disabled=bool(missing or price_issue)):
+                        book = load_options_book()
+                        entry = dict(book.get(key, pos))
+                        entry["option_type"] = option_type
+                        entry["type"] = option_type
+
+                        close_entry = dict(entry)
+                        close_entry["quantity"] = close_qty
+                        close_entry.update({
+                            "status": "expired" if close_qty >= qty else "open",
+                            "closed_at": datetime.date.today().isoformat(),
+                            "underlying_close": spot,
+                            "mark_close": mark_price,
+                        })
+                        pnl_vals = compute_option_pnl(close_entry, spot, mark_price=mark_price)
+                        close_entry.update(pnl_vals)
+
+                        if close_qty >= qty:
+                            book[key] = close_entry
                         else:
-                            st.markdown("🟩 Paramètres OK pour pricer")
+                            # partial close: reduce remaining quantity
+                            remaining = max(qty - close_qty, 0)
+                            entry["quantity"] = remaining
+                            book[key] = entry
+                            book[f"{key}_closed_{int(time.time())}"] = close_entry
 
-                        if st.button(f"✅ {btn_label}", key=f"close_custom_{key}"):
-                            book = load_options_book()
-                            entry = dict(book.get(key, pos))
-                            entry["option_type"] = option_type
-                            entry["type"] = option_type
-
-                            close_entry = dict(entry)
-                            close_entry["quantity"] = close_qty
-                            close_entry.update({
-                                "status": "expired" if close_qty >= qty else "open",
-                                "closed_at": datetime.date.today().isoformat(),
-                                "underlying_close": spot,
-                                "mark_close": mark_price,
-                            })
-                            pnl_vals = compute_option_pnl(close_entry, spot, mark_price=mark_price)
-                            close_entry.update(pnl_vals)
-
-                            if close_qty >= qty:
-                                book[key] = close_entry
-                            else:
-                                # partial close: reduce remaining quantity
-                                remaining = max(qty - close_qty, 0)
-                                entry["quantity"] = remaining
-                                book[key] = entry
-                                book[f"{key}_closed_{int(time.time())}"] = close_entry
-
-                            save_options_book(book)
-                            st.success(f"Closed {close_qty} of {key} ({product}), realized PnL ≈ ${pnl_vals['pnl_total']:.2f}")
-                            time.sleep(1)
-                            st.rerun()
+                        save_options_book(book)
+                        st.success(f"Closed {close_qty} of {key} ({product}), realized PnL ≈ ${pnl_vals['pnl_total']:.2f}")
+                        time.sleep(1)
+                        st.rerun()
             else:
                 st.info("Aucune option custom à afficher pour le moment.")
         else:
