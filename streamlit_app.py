@@ -3501,13 +3501,26 @@ def run_app_options():
             fig.update_layout(title=title, xaxis_title="Spot à maturité", yaxis_title="Payoff")
             return fig
 
-        def _render_payoff_dropdown(product: str, description: str, payoff_func):
+        def _render_payoff_dropdown(
+            product: str,
+            description: str,
+            payoff_func,
+            *,
+            strike2_factor: float = 1.05,
+            strike_lines_override: list[float] | Callable[[float, float], list[float]] | None = None,
+        ):
             with st.expander(f"🧭 Comprendre le payoff – {product}", expanded=False):
                 K = float(st.session_state.get("common_strike_value", common_strike_value))
-                K2 = float(st.session_state.get("common_strike_value", common_strike_value) * 1.05)
+                K2 = float(st.session_state.get("common_strike_value", common_strike_value) * strike2_factor)
                 xs = np.linspace(max(0.1, K * 0.5), K * 1.5, 100)
                 ys = [payoff_func(x, K, K2) for x in xs]
-                fig = _payoff_plot(xs, ys, f"Payoff {product}", strike_lines=[K, K2])
+                if strike_lines_override is None:
+                    strikes_to_plot = [K, K2]
+                elif callable(strike_lines_override):
+                    strikes_to_plot = strike_lines_override(K, K2)
+                else:
+                    strikes_to_plot = strike_lines_override
+                fig = _payoff_plot(xs, ys, f"Payoff {product}", strike_lines=strikes_to_plot)
                 st.plotly_chart(fig, width="stretch", key=_k(f"payoff_{product}"))
                 st.caption(description)
 
@@ -5012,18 +5025,7 @@ def run_app_options():
                         help="Nombre de pas de temps pour suivre le franchissement de la barrière.",
                     )
 
-                    st.caption("Graphique des stocks avec barrière haute (onglet Up).")
-                    _render_barrier_stock_paths(
-                        S0=S0_common,
-                        T=T_common,
-                        r=r_common,
-                        dividend=d_common,
-                        sigma=sigma_common,
-                        barrier=Hu_up,
-                        barrier_type="up",
-                        n_steps=n_steps_up,
-                        title_suffix="Up-and-out / Up-and-in",
-                    )
+                    ctx_up_out = st.session_state.get(_k("saved_barrier_up_out"))
 
                     if st.button("Calculer (Up-and-out)", key=_k("btn_barrier_up")):
                         progress = st.progress(0)
@@ -5044,21 +5046,28 @@ def run_app_options():
                             progress.progress(100)
                         st.write(f"**Prix Monte Carlo barrière**: {price:.6f}")
                         progress.empty()
-                        render_add_to_dashboard_button(
-                            product_label="Barrier up-and-out",
-                            option_char=option_char,
-                            price_value=price,
-                            strike=K_common,
-                            maturity=T_common,
-                            key_prefix=_k("save_barrier_up_out"),
-                            spot=S0_common,
-                            misc={
+                        ctx_up_out = {
+                            "price": price,
+                            "misc": {
                                 "barrier_type": "up",
                                 "knock": "out",
                                 "barrier_level": Hu_up,
                                 "n_paths": int(n_paths_up),
                                 "n_steps": int(n_steps_up),
                             },
+                        }
+                        st.session_state[_k("saved_barrier_up_out")] = ctx_up_out
+
+                    if ctx_up_out:
+                        render_add_to_dashboard_button(
+                            product_label="Acheter barrière up-and-out",
+                            option_char=option_char,
+                            price_value=ctx_up_out["price"],
+                            strike=K_common,
+                            maturity=T_common,
+                            key_prefix=_k("save_barrier_up_out"),
+                            spot=S0_common,
+                            misc=ctx_up_out["misc"],
                         )
 
                     st.caption(f"Rappel : S0 = {S0_common:.4f}, Hu = {Hu_up:.4f}")
@@ -5118,18 +5127,7 @@ def run_app_options():
                         help="Nombre de pas de temps pour suivre la barrière.",
                     )
 
-                    st.caption("Graphique des stocks avec barrière basse (onglet Down).")
-                    _render_barrier_stock_paths(
-                        S0=S0_common,
-                        T=T_common,
-                        r=r_common,
-                        dividend=d_common,
-                        sigma=sigma_common,
-                        barrier=Hd_down,
-                        barrier_type="down",
-                        n_steps=n_steps_down,
-                        title_suffix="Down-and-out / Down-and-in",
-                    )
+                    ctx_down_out = st.session_state.get(_k("saved_barrier_down_out"))
 
                     if st.button("Calculer (Down-and-out)", key=_k("btn_barrier_down")):
                         progress = st.progress(0)
@@ -5150,21 +5148,27 @@ def run_app_options():
                             progress.progress(100)
                         st.write(f"**Prix Monte Carlo barrière**: {price:.6f}")
                         progress.empty()
-                        render_add_to_dashboard_button(
-                            product_label="Barrier down-and-out",
-                            option_char=option_char,
-                            price_value=price,
-                            strike=K_common,
-                            maturity=T_common,
-                            key_prefix=_k("save_barrier_down_out"),
-                            spot=S0_common,
-                            misc={
+                        ctx_down_out = {
+                            "price": price,
+                            "misc": {
                                 "barrier_type": "down",
                                 "knock": "out",
                                 "barrier_level": Hd_down,
                                 "n_paths": int(n_paths_down),
                                 "n_steps": int(n_steps_down),
                             },
+                        }
+                        st.session_state[_k("saved_barrier_down_out")] = ctx_down_out
+                    if ctx_down_out:
+                        render_add_to_dashboard_button(
+                            product_label="Acheter barrière down-and-out",
+                            option_char=option_char,
+                            price_value=ctx_down_out["price"],
+                            strike=K_common,
+                            maturity=T_common,
+                            key_prefix=_k("save_barrier_down_out"),
+                            spot=S0_common,
+                            misc=ctx_down_out["misc"],
                         )
 
                     st.caption(f"Rappel : S0 = {S0_common:.4f}, Hd = {Hd_down:.4f}")
@@ -5227,18 +5231,7 @@ def run_app_options():
                         help="Nombre de pas de temps par trajectoire pour l’Up-in.",
                     )
 
-                    st.caption("Graphique des stocks avec barrière haute (Up-in).")
-                    _render_barrier_stock_paths(
-                        S0=S0_common,
-                        T=T_common,
-                        r=r_common,
-                        dividend=d_common,
-                        sigma=sigma_common,
-                        barrier=Hu_up_in,
-                        barrier_type="up",
-                        n_steps=n_steps_up_in,
-                        title_suffix="Up-and-in",
-                    )
+                    ctx_up_in = st.session_state.get(_k("saved_barrier_up_in"))
 
                     if st.button("Calculer (Up-and-in)", key=_k("btn_barrier_up_in")):
                         progress = st.progress(0)
@@ -5260,21 +5253,27 @@ def run_app_options():
                             progress.progress(100)
                         st.write(f"**Prix Monte Carlo knock-in**: {price:.6f}")
                         progress.empty()
-                        render_add_to_dashboard_button(
-                            product_label="Barrier up-and-in",
-                            option_char=option_char,
-                            price_value=price,
-                            strike=K_common,
-                            maturity=T_common,
-                            key_prefix=_k("save_barrier_up_in"),
-                            spot=S0_common,
-                            misc={
+                        ctx_up_in = {
+                            "price": price,
+                            "misc": {
                                 "barrier_type": "up",
                                 "knock": "in",
                                 "barrier_level": Hu_up_in,
                                 "n_paths": int(n_paths_up_in),
                                 "n_steps": int(n_steps_up_in),
                             },
+                        }
+                        st.session_state[_k("saved_barrier_up_in")] = ctx_up_in
+                    if ctx_up_in:
+                        render_add_to_dashboard_button(
+                            product_label="Acheter barrière up-and-in",
+                            option_char=option_char,
+                            price_value=ctx_up_in["price"],
+                            strike=K_common,
+                            maturity=T_common,
+                            key_prefix=_k("save_barrier_up_in"),
+                            spot=S0_common,
+                            misc=ctx_up_in["misc"],
                         )
 
                     st.caption(f"Rappel : S0 = {S0_common:.4f}, Hu = {Hu_up_in:.4f}")
@@ -5332,18 +5331,7 @@ def run_app_options():
                         key=_k("n_steps_barrier_down_in"),
                     )
 
-                    st.caption("Graphique des stocks avec barrière basse (Down-in).")
-                    _render_barrier_stock_paths(
-                        S0=S0_common,
-                        T=T_common,
-                        r=r_common,
-                        dividend=d_common,
-                        sigma=sigma_common,
-                        barrier=Hd_down_in,
-                        barrier_type="down",
-                        n_steps=n_steps_down_in,
-                        title_suffix="Down-and-in",
-                    )
+                    ctx_down_in = st.session_state.get(_k("saved_barrier_down_in"))
 
                     if st.button("Calculer (Down-and-in)", key=_k("btn_barrier_down_in")):
                         progress = st.progress(0)
@@ -5365,21 +5353,27 @@ def run_app_options():
                             progress.progress(100)
                         st.write(f"**Prix Monte Carlo knock-in**: {price:.6f}")
                         progress.empty()
-                        render_add_to_dashboard_button(
-                            product_label="Barrier down-and-in",
-                            option_char=option_char,
-                            price_value=price,
-                            strike=K_common,
-                            maturity=T_common,
-                            key_prefix=_k("save_barrier_down_in"),
-                            spot=S0_common,
-                            misc={
+                        ctx_down_in = {
+                            "price": price,
+                            "misc": {
                                 "barrier_type": "down",
                                 "knock": "in",
                                 "barrier_level": Hd_down_in,
                                 "n_paths": int(n_paths_down_in),
                                 "n_steps": int(n_steps_down_in),
                             },
+                        }
+                        st.session_state[_k("saved_barrier_down_in")] = ctx_down_in
+                    if ctx_down_in:
+                        render_add_to_dashboard_button(
+                            product_label="Acheter barrière down-and-in",
+                            option_char=option_char,
+                            price_value=ctx_down_in["price"],
+                            strike=K_common,
+                            maturity=T_common,
+                            key_prefix=_k("save_barrier_down_in"),
+                            spot=S0_common,
+                            misc=ctx_down_in["misc"],
                         )
 
 
@@ -5558,6 +5552,26 @@ def run_app_options():
                 _render_structure_panel("Iron Condor")
             else:
                 st.info("Clique pour lancer le pricing Iron Condor.")
+            _render_payoff_dropdown(
+                "Iron Condor",
+                "Crédit maximum au centre (entre strikes courts), perte plafonnée entre les ailes longues.",
+                lambda s, K, K2: (
+                    (lambda k1, k2, k3, k4: max(k1 - s, 0.0) - max(k2 - s, 0.0) - max(s - k3, 0.0) + max(s - k4, 0.0))(
+                        K - max(abs(K2 - K), max(0.5, K * 0.05)) * 1.5,
+                        K - max(abs(K2 - K), max(0.5, K * 0.05)) * 0.5,
+                        K + max(abs(K2 - K), max(0.5, K * 0.05)) * 0.5,
+                        K + max(abs(K2 - K), max(0.5, K * 0.05)) * 1.5,
+                    )
+                ),
+                strike_lines_override=lambda K, K2: (
+                    lambda k1, k2, k3, k4: [k1, k2, k3, k4]
+                )(
+                    K - max(abs(K2 - K), max(0.5, K * 0.05)) * 1.5,
+                    K - max(abs(K2 - K), max(0.5, K * 0.05)) * 0.5,
+                    K + max(abs(K2 - K), max(0.5, K * 0.05)) * 0.5,
+                    K + max(abs(K2 - K), max(0.5, K * 0.05)) * 1.5,
+                ),
+            )
 
         with tab_digital:
             _flag_dig = st.session_state.get(_k("run_digital_done"), False)
@@ -5616,6 +5630,7 @@ def run_app_options():
                 "Straddle",
                 "Zone de gain : au-delà des strikes K±, la courbe de payoff devient positive (symétrique Call+Put).",
                 lambda s, K, K2: max(s - K, 0.0) + max(K - s, 0.0),
+                strike2_factor=1.0,
             )
 
         with tab_strangle:
@@ -5662,8 +5677,11 @@ def run_app_options():
                 st.info("Clique pour lancer le pricing Put spread.")
             _render_payoff_dropdown(
                 "Put spread",
-                "Zone de gain : entre K2 (put short) et K (put long), payoff positif plafonné au-delà de K.",
-                lambda s, K, K2: max(K - s, 0.0) - max(K2 - s, 0.0),
+                "Zone de gain : entre Kbas (put short) et Khaut (put long). Payoff plafonné au-dessus de Khaut.",
+                lambda s, K, K2: (
+                    max(max(K, K2) - s, 0.0) - max(min(K, K2) - s, 0.0)
+                ),
+                strike2_factor=0.95,
             )
 
         with tab_butterfly:
@@ -5713,6 +5731,21 @@ def run_app_options():
                 _render_structure_panel("Iron Butterfly")
             else:
                 st.info("Clique pour lancer le pricing Iron Butterfly.")
+            _render_payoff_dropdown(
+                "Iron Butterfly",
+                "Straddle vendu au centre, ailes longues protègent en dehors. Payoff en tente inversée (crédit maximal autour de K).",
+                lambda s, K, K2: (
+                    (lambda w: max((K - w) - s, 0.0) - max(K - s, 0.0) - max(s - K, 0.0) + max(s - (K + w), 0.0))(
+                        max(abs(K2 - K), max(0.5, K * 0.05))
+                    )
+                ),
+                strike2_factor=1.0,
+                strike_lines_override=lambda K, K2: [
+                    K - max(abs(K2 - K), max(0.5, K * 0.05)),
+                    K,
+                    K + max(abs(K2 - K), max(0.5, K * 0.05)),
+                ],
+            )
 
         with tab_calendar:
             _flag_cal = st.session_state.get(_k("run_calendar_done"), False)
