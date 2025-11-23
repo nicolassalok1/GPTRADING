@@ -32,11 +32,11 @@
     "underlying": "SPY",
     "option_type": "call",
     "product_type": "Vanilla (Heston CM)",
-    "type": "Vanilla (Heston CM)",
+    "type": "call",
     "strike": 660.0,
     "strike2": null,
     "expiration": "2026-02-17",
-    "quantity": 1.0,
+    "quantity": 1,
     "avg_price": 25.64823651207065,
     "side": "long",
     "S0": 659.03,
@@ -51,11 +51,17 @@
       "spot_at_pricing": 659.03
     },
     "id": "opt_1763819492957",
-    "status": "open",
+    "status": "expired",
     "created_at": "2025-11-22 13:51:32",
     "last_updated": "2025-11-22 13:51:32",
     "product": "Vanilla (Heston CM)",
-    "T_0_price": 25.64823651207065
+    "T_0_price": 25.64823651207065,
+    "closed_at": "2025-11-23",
+    "underlying_close": 659.03,
+    "mark_close": 0.035589213215711624,
+    "payoff_per_unit": 0.035589213215711624,
+    "pnl_per_unit": -25.612647298854938,
+    "pnl_total": -25.612647298854938
   },
   "opt_1763819507643": {
     "underlying": "SPY",

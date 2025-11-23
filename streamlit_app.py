@@ -7250,6 +7250,54 @@ with tab1:
                     st.caption(f"Pricing fn: {pricing_fn}")
                     st.caption(f"Paramètres requis: {needed}")
                     st.caption(f"Paramètres disponibles: {sorted(available)}")
+                    # Afficher les valeurs connues pour chaque paramètre requis
+                    def _param_value(k: str):
+                        if k == "option_type":
+                            return option_type
+                        if k == "strike":
+                            return strike
+                        if k == "strike2":
+                            return strike2
+                        if k == "expiration":
+                            return pos.get("expiration")
+                        if k == "quantity":
+                            return qty
+                        if k == "sigma":
+                            return sigma_used
+                        if k == "S0":
+                            return spot
+                        if k == "r":
+                            return (misc or {}).get("r")
+                        if k == "q":
+                            return (misc or {}).get("q")
+                        if k == "n_obs":
+                            return (misc or {}).get("n_obs")
+                        if k == "n_paths":
+                            return (misc or {}).get("n_paths")
+                        if k == "n_steps":
+                            return (misc or {}).get("n_steps")
+                        if k == "barrier_level":
+                            return (misc or {}).get("barrier") or (misc or {}).get("barrier_level")
+                        if k == "barrier_type":
+                            return (misc or {}).get("barrier_type")
+                        if k == "knock" or k == "direction":
+                            return (misc or {}).get("knock") or (misc or {}).get("direction")
+                        if k == "legs (strike/side/type)":
+                            return pos.get("legs")
+                        if k == "T_start":
+                            return (misc or {}).get("T_start")
+                        if k == "t_choice":
+                            return (misc or {}).get("t_choice")
+                        if k == "cap":
+                            return (misc or {}).get("cap")
+                        if k == "floor":
+                            return (misc or {}).get("floor")
+                        return (misc or {}).get(k) or pos.get(k)
+
+                    if needed:
+                        st.caption("Valeurs actuelles des paramètres requis :")
+                        param_lines = [f"- `{k}` : { _param_value(k) }" for k in needed]
+                        st.markdown("\n".join(param_lines))
                     if missing:
                         st.markdown(f"🔴 Paramètres manquants: {sorted(missing)}")
                     elif extra:
