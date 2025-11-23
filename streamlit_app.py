@@ -124,12 +124,15 @@ def run_app_options():
                 st.caption(f"T (maturité commune, années): {float(maturity):.4f}")
 
             if st.button("Ajouter au dashboard", key=f"{key_prefix}_add"):
-                misc_payload = misc if misc is not None else {
+                base_misc = {
                     "structure": product_label,
                     "legs": legs,
                     "strike2": strike2_val,
                     "spot_at_pricing": float(spot or 0.0),
                 }
+                if isinstance(misc, dict):
+                    base_misc.update(misc)
+                misc_payload = base_misc
                 payload = {
                     "underlying": underlying or "N/A",
                     "option_type": "call" if option_char.lower() == "c" else "put",
@@ -4300,6 +4303,15 @@ def run_app_options():
                             price_cm = None
                     if price_cm is not None:
                         st.success(f"Prix Heston (Carr–Madan) {option_label} = {price_cm:.6f}")
+                        misc_heston = {
+                            "heston_params": {
+                                "kappa": float(st.session_state.get("heston_kappa_common", 2.0)),
+                                "theta": float(st.session_state.get("heston_theta_common", 0.04)),
+                                "eta": float(st.session_state.get("heston_eta_common", 0.5)),
+                                "rho": float(st.session_state.get("heston_rho_common", -0.7)),
+                                "v0": float(st.session_state.get("heston_v0_common", 0.04)),
+                            }
+                        }
                         render_add_to_dashboard_button(
                             product_label="Vanilla (Heston CM)",
                             option_char=option_char,
@@ -4308,6 +4320,7 @@ def run_app_options():
                             maturity=common_maturity_value,
                             key_prefix=_k("save_heston_cm"),
                             spot=common_spot_value,
+                            misc=misc_heston,
                         )
 
                 with st.expander("Visualisations Heston (Carr–Madan)", expanded=False):
@@ -5798,6 +5811,15 @@ def load_options_book():
     return {}
 
 
+def load_options_book_legacy_only() -> dict:
+    """Direct read of the legacy options_book.json (used for display/debug)."""
+    try:
+        with open(OPTIONS_BOOK_FILE_LEGACY, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
 def save_options_book(book):
     """Persist the unified options book (and legacy mirror) to disk."""
     try:
@@ -6001,7 +6023,47 @@ def mark_option_market_value(option: dict, chain_entry: dict | None = None) -> t
 
     mark_price = None
     method = "intrinsic"
-    if spot > 0 and strike > 0 and T_years is not None and option_type in {"call", "put"}:
+    # Heston Carr–Madan if params are provided in misc
+    misc = option.get("misc") if isinstance(option.get("misc"), dict) else {}
+    heston_misc = misc.get("heston_params") if isinstance(misc, dict) else None
+    # fallback maturity from stored field if expiration missing
+    if T_years is None:
+        try:
+            T_years = float(option.get("maturity_years") or 0.0)
+        except Exception:
+            T_years = None
+    if (
+        heston_misc
+        and spot > 0
+        and strike > 0
+        and T_years is not None
+        and T_years > 0
+        and option_type in {"call", "put"}
+    ):
+        try:
+            params = HestonParams(
+                torch.tensor(float(heston_misc.get("kappa")), device=HES_DEVICE),
+                torch.tensor(float(heston_misc.get("theta")), device=HES_DEVICE),
+                torch.tensor(float(heston_misc.get("eta")), device=HES_DEVICE),
+                torch.tensor(float(heston_misc.get("rho")), device=HES_DEVICE),
+                torch.tensor(float(heston_misc.get("v0")), device=HES_DEVICE),
+            )
+            r_val = float(get_r(T_years) or 0.0)
+            mark_price = _carr_madan_price(
+                S0=spot,
+                K=strike,
+                T=T_years,
+                r=r_val,
+                q=q_val,
+                opt_char="c" if option_type == "call" else "p",
+                params=params,
+            )
+            method = "Heston CM (stored params)"
+        except Exception:
+            mark_price = None
+
+    # BSM fallback
+    if mark_price is None and spot > 0 and strike > 0 and T_years is not None and option_type in {"call", "put"}:
         try:
             r_val = float(get_r(T_years) or 0.0)
         except Exception:
@@ -6829,6 +6891,11 @@ with tab1:
 
         # Include realized PnL from expired options
         expired_options = load_expired_options()
+        # Merge legacy options_book.json content for display/PnL, to ensure completeness
+        legacy_book = load_options_book_legacy_only()
+        for opt_id, entry in legacy_book.items():
+            if opt_id not in expired_options and entry.get("status") in {"expired", "closed"}:
+                expired_options[opt_id] = entry
         realized_pnl_options = sum(
             float(opt.get("pnl_total", 0.0) or 0.0) for opt in expired_options.values()
         )
@@ -6863,9 +6930,12 @@ with tab1:
                     "PnL/unit": opt.get("pnl_per_unit"),
                     "PnL total": opt.get("pnl_total"),
                     "Closed at": opt.get("closed_at"),
+                    "Source": opt.get("_source", "book"),
                 })
             df_exp = pd.DataFrame(exp_rows)
             st.dataframe(df_exp, width="stretch", hide_index=True)
+            if legacy_book:
+                st.caption("Source merge : options_portfolio.json + options_book.json (legacy).")
         else:
             st.info("Aucune option expirée/close pour l’instant.")
 
@@ -7038,10 +7108,10 @@ with tab1:
             "Strike2": strike2,
             "Expiration": pos.get("expiration"),
             "Quantity": quantity,
-            "T_0 Price": f"${avg_price:.3f}",
-            "Current Price (model)": f"${mark_price:.4f}",
-            "Model P&L": f"${total_pnl_opt:.2f}",
-            "Misc keys": ", ".join(sorted(misc.keys())) if isinstance(misc, dict) else "",
+            "T_0 Price": avg_price,
+            "Current Price (model)": mark_price,
+            "Model P&L": total_pnl_opt,
+            "Misc (json)": json.dumps(misc or {}, ensure_ascii=False),
         })
 
         if rows_custom:
