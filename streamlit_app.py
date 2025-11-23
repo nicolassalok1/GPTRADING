@@ -5406,48 +5406,56 @@ def run_app_options():
 
         with tab_basket:
             st.header("Options basket")
-            render_general_definition_explainer(
-                "🧺 Comprendre les options basket",
-                (
-                    "- **Définition** : une option basket porte sur un panier de plusieurs sous‑jacents (actions, indices, etc.), typiquement via une combinaison pondérée de leurs prix.\n"
-                    "- **Mécanisme** : le payoff dépend de la valeur de ce panier (par exemple une moyenne pondérée des spots) à l’échéance ou selon une trajectoire donnée.\n"
-                    "- **Intérêt** : ces produits permettent de mutualiser le risque entre plusieurs actifs et de construire des vues relatives (sur‑/sous‑performance de certains composants du panier).\n"
-                    "- **Enjeux de modélisation** : la corrélation entre les sous‑jacents et la structure de la volatilité jouent un rôle central dans la forme de la distribution du panier.\n"
-                    "- **Objectif de cet onglet** : explorer, à travers une surface de prix et éventuellement une calibration, l’impact des paramètres de marché et des pondérations sur le prix du basket."
-                ),
-            )
-            render_method_explainer(
-                "🧮 Méthode utilisée dans le module Basket",
-                (
-                    "- **Étape 1 – Chargement des historiques** : on charge les séries de prix de clôture des actifs du panier (ticker par ticker) à partir de fichiers CSV, en s’assurant d’avoir une période historique commune.\n"
-                    "- **Étape 2 – Construction du dataset** : à partir de ces séries, on construit un jeu de données où chaque ligne correspond à un scénario de marché (niveaux de prix, volatilités implicites, corrélations, strike, maturité, etc.) et à un prix d’option panier associé (label).\n"
-                    "- **Étape 3 – Séparation train / test** : le dataset est découpé selon `split_ratio` en un ensemble d’entraînement et un ensemble de test, afin de pouvoir évaluer la capacité du modèle à généraliser.\n"
-                    "- **Étape 4 – Entraînement du réseau de neurones** : un modèle `build_model_nn` est instancié avec une architecture adaptée (couches denses, activations non linéaires). On l’entraîne pendant `epochs` itérations pour minimiser une fonction de perte de type MSE entre prix prédits et prix \"théoriques\" (issus de BSM multi‑actifs ou Monte Carlo).\n"
-                    "- **Étape 5 – Suivi de l’apprentissage** : pendant l’entraînement, on suit l’évolution de la perte sur le jeu d’entraînement et de validation (MSE train / val) pour détecter surapprentissage ou sous‑apprentissage.\n"
-                    "- **Étape 6 – Construction des heatmaps de prix** : une fois le modèle entraîné, on le met en production sur une grille de paramètres (par exemple `S` et `K` autour de valeurs communes) pour produire une heatmap des prix d’option basket.\n"
-                    "- **Étape 7 – Construction de la surface de volatilité implicite** : en inversant éventuellement les prix du modèle sur un ensemble de paramètres, on peut reconstruire une surface de volatilité implicite associée au panier et la comparer aux données de marché.\n"
-                    "- **Étape 8 – Analyse des résultats** : les heatmaps et les courbes MSE permettent de juger de la qualité de l’approximation et de l’intérêt du modèle pour un pricing rapide en temps réel."
-                ),
-            )
-            render_inputs_explainer(
-                "🔧 Paramètres utilisés – Basket",
-                (
-                    "- **\"S0 (spot)\"** : niveau de spot de référence utilisé pour centrer certaines grilles de prix du panier.\n"
-                    "- **\"K (strike)\"** : strike de référence du basket, autour duquel on définit les domaines de strikes.\n"
-                    "- **\"T (maturité, années)\"** : maturité de référence utilisée pour les surfaces de prix ou de volatilité.\n"
-                    "- **\"Taux sans risque r\"** : taux utilisé pour actualiser les flux dans les modèles internes.\n"
-                    "- **Sélection des actifs du panier** : zone de texte / boutons permettant de choisir les tickers qui composeront le basket.\n"
-                    "- **\"Train ratio\"** : pourcentage du dataset historique utilisé pour l’apprentissage (le reste servant au test).\n"
-                    "- **\"Epochs d'entraînement\"** : nombre de passes sur le dataset lors de l’entraînement du réseau de neurones."
-                ),
-            )
-            ui_basket_surface(
-                spot_common=common_spot_value,
-                maturity_common=common_maturity_value,
-                rate_common=common_rate_value,
-                strike_common=common_strike_value,
-                key_prefix=f"basket_{option_label.lower()}",
-            )
+            basket_run_flag = st.session_state.get(_k("run_basket_done"), False)
+            if not basket_run_flag:
+                if st.button("🚀 Lancer le module Basket", key=_k("run_basket_btn"), type="primary"):
+                    st.session_state[_k("run_basket_done")] = True
+                    basket_run_flag = True
+                    st.rerun()
+                st.info("Clique pour lancer le module Basket et afficher les dropdowns / heatmaps.")
+            if basket_run_flag:
+                render_general_definition_explainer(
+                    "🧺 Comprendre les options basket",
+                    (
+                        "- **Définition** : une option basket porte sur un panier de plusieurs sous‑jacents (actions, indices, etc.), typiquement via une combinaison pondérée de leurs prix.\n"
+                        "- **Mécanisme** : le payoff dépend de la valeur de ce panier (par exemple une moyenne pondérée des spots) à l’échéance ou selon une trajectoire donnée.\n"
+                        "- **Intérêt** : ces produits permettent de mutualiser le risque entre plusieurs actifs et de construire des vues relatives (sur‑/sous‑performance de certains composants du panier).\n"
+                        "- **Enjeux de modélisation** : la corrélation entre les sous‑jacents et la structure de la volatilité jouent un rôle central dans la forme de la distribution du panier.\n"
+                        "- **Objectif de cet onglet** : explorer, à travers une surface de prix et éventuellement une calibration, l’impact des paramètres de marché et des pondérations sur le prix du basket."
+                    ),
+                )
+                render_method_explainer(
+                    "🧮 Méthode utilisée dans le module Basket",
+                    (
+                        "- **Étape 1 – Chargement des historiques** : on charge les séries de prix de clôture des actifs du panier (ticker par ticker) à partir de fichiers CSV, en s’assurant d’avoir une période historique commune.\n"
+                        "- **Étape 2 – Construction du dataset** : à partir de ces séries, on construit un jeu de données où chaque ligne correspond à un scénario de marché (niveaux de prix, volatilités implicites, corrélations, strike, maturité, etc.) et à un prix d’option panier associé (label).\n"
+                        "- **Étape 3 – Séparation train / test** : le dataset est découpé selon `split_ratio` en un ensemble d’entraînement et un ensemble de test, afin de pouvoir évaluer la capacité du modèle à généraliser.\n"
+                        "- **Étape 4 – Entraînement du réseau de neurones** : un modèle `build_model_nn` est instancié avec une architecture adaptée (couches denses, activations non linéaires). On l’entraîne pendant `epochs` itérations pour minimiser une fonction de perte de type MSE entre prix prédits et prix \"théoriques\" (issus de BSM multi‑actifs ou Monte Carlo).\n"
+                        "- **Étape 5 – Suivi de l’apprentissage** : pendant l’entraînement, on suit l’évolution de la perte sur le jeu d’entraînement et de validation (MSE train / val) pour détecter surapprentissage ou sous‑apprentissage.\n"
+                        "- **Étape 6 – Construction des heatmaps de prix** : une fois le modèle entraîné, on le met en production sur une grille de paramètres (par exemple `S` et `K` autour de valeurs communes) pour produire une heatmap des prix d’option basket.\n"
+                        "- **Étape 7 – Construction de la surface de volatilité implicite** : en inversant éventuellement les prix du modèle sur un ensemble de paramètres, on peut reconstruire une surface de volatilité implicite associée au panier et la comparer aux données de marché.\n"
+                        "- **Étape 8 – Analyse des résultats** : les heatmaps et les courbes MSE permettent de juger de la qualité de l’approximation et de l’intérêt du modèle pour un pricing rapide en temps réel."
+                    ),
+                )
+                render_inputs_explainer(
+                    "🔧 Paramètres utilisés – Basket",
+                    (
+                        "- **\"S0 (spot)\"** : niveau de spot de référence utilisé pour centrer certaines grilles de prix du panier.\n"
+                        "- **\"K (strike)\"** : strike de référence du basket, autour duquel on définit les domaines de strikes.\n"
+                        "- **\"T (maturité, années)\"** : maturité de référence utilisée pour les surfaces de prix ou de volatilité.\n"
+                        "- **\"Taux sans risque r\"** : taux utilisé pour actualiser les flux dans les modèles internes.\n"
+                        "- **Sélection des actifs du panier** : zone de texte / boutons permettant de choisir les tickers qui composeront le basket.\n"
+                        "- **\"Train ratio\"** : pourcentage du dataset historique utilisé pour l’apprentissage (le reste servant au test).\n"
+                        "- **\"Epochs d'entraînement\"** : nombre de passes sur le dataset lors de l’entraînement du réseau de neurones."
+                    ),
+                )
+                ui_basket_surface(
+                    spot_common=common_spot_value,
+                    maturity_common=common_maturity_value,
+                    rate_common=common_rate_value,
+                    strike_common=common_strike_value,
+                    key_prefix=f"basket_{option_label.lower()}",
+                )
 
 
         with tab_asian:
