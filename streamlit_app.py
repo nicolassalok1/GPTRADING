@@ -5947,6 +5947,49 @@ def compute_option_payoff(option: dict, spot: float) -> float:
     option_type = str(option_type_raw).lower()
     strike = float(option.get("strike", 0.0) or 0.0)
     strike2 = float(option.get("strike2", option.get("strike_upper", 0.0) or 0.0) or 0.0)
+    misc = option.get("misc") if isinstance(option.get("misc"), dict) else {}
+    closing_prices = misc.get("closing_prices") if isinstance(misc, dict) else None
+
+    # Path-dependent: Asian arithmetic / geometric via provided path
+    if "asian" in product and closing_prices:
+        if "geom" in product:
+            vals = [v for v in closing_prices if v and v > 0]
+            if not vals:
+                avg_level = spot
+            else:
+                avg_level = float(np.exp(np.mean(np.log(vals))))
+        else:
+            avg_level = float(np.mean(closing_prices))
+        if option_type == "put":
+            return max(strike - avg_level, 0.0)
+        return max(avg_level - strike, 0.0)
+
+    # Digital (cash-or-nothing) payoff
+    if "digital" in product:
+        payout = float(misc.get("payout", 1.0) or 1.0)
+        if option_type == "put":
+            return payout if spot < strike else 0.0
+        return payout if spot > strike else 0.0
+
+    # Barrier (simple in/out check using closing_prices if provided)
+    if "barrier" in product:
+        barrier = float(misc.get("barrier", misc.get("barrier_level", 0.0)) or 0.0)
+        barrier_type = str(misc.get("barrier_type", "up")).lower()
+        knock = str(misc.get("knock", misc.get("direction", "out"))).lower()
+        path_vals = closing_prices or [spot]
+        hit = False
+        for p in path_vals:
+            if barrier_type == "up" and p >= barrier:
+                hit = True
+                break
+            if barrier_type == "down" and p <= barrier:
+                hit = True
+                break
+        if knock == "out" and hit:
+            return 0.0
+        if knock == "in" and not hit:
+            return 0.0
+        # otherwise vanilla payoff
 
     if product in {"straddle"}:
         return max(spot - strike, 0.0) + max(strike - spot, 0.0)
