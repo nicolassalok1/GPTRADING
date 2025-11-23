@@ -16,6 +16,7 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 import yfinance as yf
+import requests
 from pathlib import Path
 
 # Symbols for risk-free proxies
@@ -24,10 +25,28 @@ RATE_SYMBOLS: Dict[str, float] = {
     "^FVX": 5.0,   # 5-year
     "^TNX": 10.0,  # 10-year
 }
+FRED_SERIES: Dict[str, str] = {
+    "^IRX": "DGS3MO",  # 3-month constant maturity
+    "^FVX": "DGS5",    # 5-year
+    "^TNX": "DGS10",   # 10-year
+}
 
 MAX_RETRIES = 3
 SLEEP_BETWEEN = 1.0
 DEFAULT_RF = float(os.getenv("DEFAULT_RF_RATE", "0.02"))
+
+
+def _fetch_from_fred(series_id: str) -> float:
+    url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+    resp = requests.get(url, timeout=5)
+    resp.raise_for_status()
+    lines = resp.text.strip().splitlines()
+    if len(lines) < 2:
+        raise RuntimeError("Réponse FRED vide")
+    last_val = lines[-1].split(",")[-1]
+    if last_val.strip() == ".":
+        raise RuntimeError("Pas de valeur FRED exploitable")
+    return float(last_val)
 
 
 def _fetch_last_close(symbol: str) -> float:
@@ -80,9 +99,21 @@ def get_r(maturity_years: float) -> float:
     for sym, mat in RATE_SYMBOLS.items():
         try:
             pct = _fetch_last_close(sym)
-            points.append((mat, pct / 100.0))  # percent -> decimal
+            val = pct / 100.0
+            if math.isfinite(val) and val > 0:
+                points.append((mat, val))
+                continue
         except Exception:
-            continue
+            pass
+        # FRED fallback
+        fred_id = FRED_SERIES.get(sym)
+        if fred_id:
+            try:
+                val = _fetch_from_fred(fred_id) / 100.0
+                if math.isfinite(val) and val > 0:
+                    points.append((mat, val))
+            except Exception:
+                continue
 
     if not points:
         return DEFAULT_RF  # fallback
