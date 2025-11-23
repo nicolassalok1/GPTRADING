@@ -10,6 +10,7 @@ import pandas as pd
 import requests
 import datetime
 import math
+import yfinance as yf
 from rates_utils import get_r, get_q
 
 # Configuration
@@ -4462,6 +4463,15 @@ def run_app_options():
                     f"T={common_maturity_value:.4f}, r={common_rate_value:.4f}, "
                     f"d={float(d_common):.4f}, σ={common_sigma_value:.4f}"
                 )
+            payoff_desc_euro = (
+                "Call : payoff = max(S - K, 0). Put : payoff = max(K - S, 0). "
+                "La ligne rouge marque le strike K, la ligne pointillée montre un strike voisin pour situer la zone de gain."
+            )
+            _render_payoff_dropdown(
+                f"Option européenne ({option_label})",
+                payoff_desc_euro,
+                lambda s, K, K2: max(s - K, 0.0) if option_char == "c" else max(K - s, 0.0),
+            )
 
         with tab_american:
             st.header("Option américaine")
@@ -4931,16 +4941,18 @@ def run_app_options():
                     with st.expander("🧭 Schéma payoff / barrière", expanded=False):
                         sample_spot = np.linspace(max(1.0, S0_common * 0.5), S0_common * 1.6, 80)
                         payoff_curve = [max(s - K_common, 0.0) for s in sample_spot]
+                        Hu_up_plot = st.session_state.get(_k("Hu_up"), None)
                         fig_pay = go.Figure()
                         fig_pay.add_trace(go.Scatter(x=sample_spot, y=payoff_curve, name="Payoff call"))
-                        fig_pay.add_shape(
-                            type="line",
-                            x0=Hu_up,
-                            x1=Hu_up,
-                            y0=0,
-                            y1=max(payoff_curve) if payoff_curve else 1,
-                            line=dict(color="red", dash="dash"),
-                        )
+                        if Hu_up_plot is not None:
+                            fig_pay.add_shape(
+                                type="line",
+                                x0=Hu_up_plot,
+                                x1=Hu_up_plot,
+                                y0=0,
+                                y1=max(payoff_curve) if payoff_curve else 1,
+                                line=dict(color="red", dash="dash"),
+                            )
                         fig_pay.update_layout(
                             title="Payoff call avec barrière up-and-out (ligne rouge = barrière Hu)",
                             xaxis_title="Spot",
@@ -5840,11 +5852,21 @@ def fetch_open_orders():
         return []
 
 def get_data(symbol):
+    symbol = (symbol or "").strip().upper()
+    # 1) Alpaca live trade
     try:
         barset = api.get_latest_trade(symbol)
-        return {"price": barset.price}
-    except Exception as e:
-        return {"price": -1}
+        return {"price": float(barset.price)}
+    except Exception:
+        pass
+    # 2) yfinance fallback (last close)
+    try:
+        hist = yf.Ticker(symbol).history(period="5d", interval="1d")
+        if not hist.empty and "Close" in hist.columns:
+            return {"price": float(hist["Close"].iloc[-1])}
+    except Exception:
+        pass
+    return {"price": -1}
 
 def load_equities():
     try:
