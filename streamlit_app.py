@@ -3483,6 +3483,33 @@ def run_app_options():
             st.info("Pas d'historique disponible pour ce ticker.")
 
     def render_option_tabs_for_type(option_label: str, option_char: str):
+        # Quick payoff helper for dropdown explanations.
+        def _payoff_plot(x_vals, y_vals, title, strike_lines=None):
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=x_vals, y=y_vals, mode="lines", name="Payoff"))
+            if strike_lines:
+                for sl in strike_lines:
+                    fig.add_shape(
+                        type="line",
+                        x0=sl,
+                        x1=sl,
+                        y0=min(y_vals),
+                        y1=max(y_vals),
+                        line=dict(color="red", dash="dash"),
+                    )
+            fig.update_layout(title=title, xaxis_title="Spot à maturité", yaxis_title="Payoff")
+            return fig
+
+        def _render_payoff_dropdown(product: str, description: str, payoff_func):
+            with st.expander(f"🧭 Comprendre le payoff – {product}", expanded=False):
+                K = float(st.session_state.get("common_strike_value", common_strike_value))
+                K2 = float(st.session_state.get("common_strike_value", common_strike_value) * 1.05)
+                xs = np.linspace(max(0.1, K * 0.5), K * 1.5, 100)
+                ys = [payoff_func(x, K, K2) for x in xs]
+                fig = _payoff_plot(xs, ys, f"Payoff {product}", strike_lines=[K, K2])
+                st.plotly_chart(fig, width="stretch", key=_k(f"payoff_{product}"))
+                st.caption(description)
+
         # Helper to avoid duplicate Streamlit keys across Call/Put tabs.
         def _k(base: str) -> str:
             return f"{base}_{option_label.lower()}"
@@ -4901,6 +4928,25 @@ def run_app_options():
 
                 with tab_barrier_up_out:
                     st.subheader("Up-and-out")
+                    with st.expander("🧭 Schéma payoff / barrière", expanded=False):
+                        sample_spot = np.linspace(max(1.0, S0_common * 0.5), S0_common * 1.6, 80)
+                        payoff_curve = [max(s - K_common, 0.0) for s in sample_spot]
+                        fig_pay = go.Figure()
+                        fig_pay.add_trace(go.Scatter(x=sample_spot, y=payoff_curve, name="Payoff call"))
+                        fig_pay.add_shape(
+                            type="line",
+                            x0=Hu_up,
+                            x1=Hu_up,
+                            y0=0,
+                            y1=max(payoff_curve) if payoff_curve else 1,
+                            line=dict(color="red", dash="dash"),
+                        )
+                        fig_pay.update_layout(
+                            title="Payoff call avec barrière up-and-out (ligne rouge = barrière Hu)",
+                            xaxis_title="Spot",
+                            yaxis_title="Payoff",
+                        )
+                        st.plotly_chart(fig_pay, width="stretch", key=_k("barrier_up_out_schema"))
                     render_method_explainer(
                         "⬆️ Méthode Monte Carlo – Up-and-out",
                         (
@@ -5554,6 +5600,11 @@ def run_app_options():
                 _render_structure_panel("Straddle")
             else:
                 st.info("Clique pour lancer le pricing Straddle.")
+            _render_payoff_dropdown(
+                "Straddle",
+                "Zone de gain : au-delà des strikes K±, la courbe de payoff devient positive (symétrique Call+Put).",
+                lambda s, K, K2: max(s - K, 0.0) + max(K - s, 0.0),
+            )
 
         with tab_strangle:
             _flag = st.session_state.get(_k("run_strangle_done"), False)
@@ -5565,6 +5616,11 @@ def run_app_options():
                 _render_structure_panel("Strangle")
             else:
                 st.info("Clique pour lancer le pricing Strangle.")
+            _render_payoff_dropdown(
+                "Strangle",
+                "Zone de gain : en dehors des strikes éloignés (put bas, call haut), payoff devient positif.",
+                lambda s, K, K2: max(K - s, 0.0) + max(s - K2, 0.0),
+            )
 
         with tab_call_spread:
             _flag = st.session_state.get(_k("run_call_spread_done"), False)
@@ -5576,6 +5632,11 @@ def run_app_options():
                 _render_structure_panel("Call spread")
             else:
                 st.info("Clique pour lancer le pricing Call spread.")
+            _render_payoff_dropdown(
+                "Call spread",
+                "Zone de gain : entre K (long call) et K2 (short call), payoff positif plafonné après K2.",
+                lambda s, K, K2: max(s - K, 0.0) - max(s - K2, 0.0),
+            )
 
         with tab_put_spread:
             _flag = st.session_state.get(_k("run_put_spread_done"), False)
@@ -5587,6 +5648,11 @@ def run_app_options():
                 _render_structure_panel("Put spread")
             else:
                 st.info("Clique pour lancer le pricing Put spread.")
+            _render_payoff_dropdown(
+                "Put spread",
+                "Zone de gain : entre K2 (put short) et K (put long), payoff positif plafonné au-delà de K.",
+                lambda s, K, K2: max(K - s, 0.0) - max(K2 - s, 0.0),
+            )
 
         with tab_butterfly:
             _flag = st.session_state.get(_k("run_butterfly_done"), False)
@@ -5598,6 +5664,11 @@ def run_app_options():
                 _render_structure_panel("Butterfly")
             else:
                 st.info("Clique pour lancer le pricing Butterfly.")
+            _render_payoff_dropdown(
+                "Butterfly",
+                "Zone de gain : centrée autour de K2 (strikes courts), payoff en forme de tente, perte en dehors.",
+                lambda s, K, K2: max(s - K, 0.0) - 2 * max(s - K2, 0.0) + max(s - (K2 + (K2 - K)), 0.0),
+            )
 
         with tab_condor:
             _flag = st.session_state.get(_k("run_condor_done"), False)
@@ -5609,6 +5680,16 @@ def run_app_options():
                 _render_structure_panel("Condor")
             else:
                 st.info("Clique pour lancer le pricing Condor.")
+            _render_payoff_dropdown(
+                "Condor",
+                "Zone de gain : plateau central entre strikes courts, pertes en dehors des ailes.",
+                lambda s, K, K2: (
+                    max(s - (K * 0.97), 0.0)
+                    - max(s - K, 0.0)
+                    - max(s - K2, 0.0)
+                    + max(s - (K2 + (K - K * 0.97)), 0.0)
+                ),
+            )
 
         with tab_iron_bfly:
             _flag_ib = st.session_state.get(_k("run_iron_bfly_done"), False)
