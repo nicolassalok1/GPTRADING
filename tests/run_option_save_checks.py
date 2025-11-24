@@ -236,11 +236,14 @@ def main():
     load_fn = ns["load_options_book"]
 
     tmpdir = tempfile.TemporaryDirectory()
-    options_path = Path(tmpdir.name) / "options_portfolio.json"
-    legacy_path = Path(tmpdir.name) / "options_book.json"
+    dbdir = Path(tmpdir.name) / "database"
+    dbdir.mkdir(exist_ok=True)
+    options_path = dbdir / "options_portfolio.json"
+    legacy_path = dbdir / "options_book.json"
     options_path.write_text("{}")
 
     # Redirect storage to temp files
+    ns["DB_DIR"] = dbdir
     ns["OPTIONS_BOOK_FILE"] = options_path
     ns["OPTIONS_BOOK_FILE_LEGACY"] = legacy_path
 

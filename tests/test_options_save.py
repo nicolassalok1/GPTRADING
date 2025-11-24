@@ -37,10 +37,13 @@ class OptionsSaveTests(unittest.TestCase):
 
         # Use a temporary options file to avoid touching real data.
         self.tmpdir = tempfile.TemporaryDirectory()
-        self.options_path = Path(self.tmpdir.name) / "options_portfolio.json"
-        self.legacy_path = Path(self.tmpdir.name) / "options_book.json"
+        dbdir = Path(self.tmpdir.name) / "database"
+        dbdir.mkdir(exist_ok=True)
+        self.options_path = dbdir / "options_portfolio.json"
+        self.legacy_path = dbdir / "options_book.json"
         self.options_path.write_text("{}")
 
+        self.ns["DB_DIR"] = dbdir
         self.ns["OPTIONS_BOOK_FILE"] = self.options_path
         self.ns["OPTIONS_BOOK_FILE_LEGACY"] = self.legacy_path
 

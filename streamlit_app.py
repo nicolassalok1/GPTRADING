@@ -1,6 +1,7 @@
 import streamlit as st
 from openai import OpenAI
 import os
+import sys
 from pathlib import Path
 import json
 import alpaca_trade_api as tradeapi
@@ -12,20 +13,28 @@ import datetime
 import math
 import yfinance as yf
 import re
-from rates_utils import get_r, get_q
 
 # Configuration
 APP_DIR = Path(__file__).resolve().parent
-DATA_FILE = APP_DIR / "equities.json"
-PORTFOLIO_FILE = APP_DIR / "portfolio.json"
-SELL_SYSTEMS_FILE = APP_DIR / "sell_systems.json"
-OPTIONS_BOOK_FILE = APP_DIR / "options_portfolio.json"
-OPTIONS_BOOK_FILE_LEGACY = APP_DIR / "options_book.json"
+DB_DIR = APP_DIR / "database"
+DB_DIR.mkdir(exist_ok=True)
+SCRIPTS_DIR = APP_DIR / "scripts"
+PRICING_DIR = APP_DIR / "pricing_scripts"
+DATASETS_DIR = DB_DIR / "data"
+DATASETS_DIR.mkdir(exist_ok=True)
+sys.path.insert(0, str(SCRIPTS_DIR))
+sys.path.insert(0, str(PRICING_DIR))
+from rates_utils import get_r, get_q
+DATA_FILE = DB_DIR / "equities.json"
+PORTFOLIO_FILE = DB_DIR / "portfolio.json"
+SELL_SYSTEMS_FILE = DB_DIR / "sell_systems.json"
+OPTIONS_BOOK_FILE = DB_DIR / "options_portfolio.json"
+OPTIONS_BOOK_FILE_LEGACY = DB_DIR / "options_book.json"
 OPTIONS_PORTFOLIO_FILE = OPTIONS_BOOK_FILE  # legacy name kept for compatibility
 EXPIRED_OPTIONS_FILE = OPTIONS_BOOK_FILE    # legacy name kept for compatibility
-CUSTOM_OPTIONS_FILE = APP_DIR / "custom_options.json"
-FORWARDS_FILE = APP_DIR / "forwards.json"
-LEGACY_EXPIRED_FILE = APP_DIR / "expired_options.json"
+CUSTOM_OPTIONS_FILE = DB_DIR / "custom_options.json"
+FORWARDS_FILE = DB_DIR / "forwards.json"
+LEGACY_EXPIRED_FILE = DB_DIR / "expired_options.json"
 load_dotenv()
 
 def run_app_options():
@@ -2134,7 +2143,7 @@ def run_app_options():
         render_unlock_sidebar_button("tab_basket", "🔓 Réactiver T (onglet Basket)")
 
         min_assets, max_assets = 2, 10
-        closing_path = Path("data/closing_prices.csv")
+        closing_path = DATASETS_DIR / "closing_prices.csv"
         prices_df_cached, csv_tickers = load_closing_prices_with_tickers(closing_path)
 
         def _normalize_tickers(candidates: list[str]) -> list[str]:
@@ -2189,7 +2198,7 @@ def run_app_options():
         interval = st.selectbox("Intervalle", ["1d", "1h"], index=0, key=_k("corr_interval"))
 
         st.caption(
-            "Le calcul de corrélation utilise les prix de clôture présents dans data/closing_prices.csv (régénéré via yfinance). "
+            "Le calcul de corrélation utilise les prix de clôture présents dans database/data/closing_prices.csv (régénéré via yfinance). "
             "En cas d'échec, une matrice de corrélation inventée sera utilisée."
         )
         regen_csv = st.button("Mettre à jour la Matrice de Corrélation", key=_k("btn_regen_closing"))
@@ -2199,7 +2208,7 @@ def run_app_options():
                 closing_path.parent.mkdir(parents=True, exist_ok=True)
                 prices_df_cached.to_csv(closing_path, index=False)
                 csv_tickers = [c for c in prices_df_cached.columns if str(c).lower() != "date"]
-                st.info(f"data/closing_prices.csv généré via yfinance ({len(prices_df_cached)} lignes)")
+                st.info(f"database/data/closing_prices.csv généré via yfinance ({len(prices_df_cached)} lignes)")
                 if csv_tickers:
                     st.session_state["basket_tickers"] = _normalize_tickers(csv_tickers)
                     tickers = st.session_state["basket_tickers"]
@@ -2211,12 +2220,12 @@ def run_app_options():
             if prices_df_cached is None:
                 prices_df_cached, _ = load_closing_prices_with_tickers(closing_path)
             if prices_df_cached is None:
-                raise FileNotFoundError("Impossible de charger data/closing_prices.csv.")
+                raise FileNotFoundError("Impossible de charger database/data/closing_prices.csv.")
             corr_df = compute_corr_from_prices(prices_df_cached)
             st.success(f"Corrélation calculée à partir de {closing_path.name}")
             st.dataframe(corr_df)
         except Exception as exc:
-            st.warning(f"Impossible de calculer la corrélation depuis data/closing_prices.csv : {exc}")
+            st.warning(f"Impossible de calculer la corrélation depuis database/data/closing_prices.csv : {exc}")
             corr_df = pd.DataFrame(
                 [
                     [1.0, 0.6, 0.4],
@@ -2251,8 +2260,8 @@ def run_app_options():
 
         x_train, y_train, x_test, y_test = split_data_nn(df, split_ratio=split_ratio)
         Path("data").mkdir(parents=True, exist_ok=True)
-        pd.concat([x_train, y_train], axis=1).to_csv("data/train.csv", index=False)
-        pd.concat([x_test, y_test], axis=1).to_csv("data/test.csv", index=False)
+        pd.concat([x_train, y_train], axis=1).to_csv(DATASETS_DIR / "train.csv", index=False)
+        pd.concat([x_test, y_test], axis=1).to_csv(DATASETS_DIR / "test.csv", index=False)
         st.info("train.csv et test.csv régénérés pour la surface IV.")
 
         st.write(f"Train size: {x_train.shape[0]} | Test size: {x_test.shape[0]}")
@@ -3427,9 +3436,9 @@ def run_app_options():
     else:
         hist_df = pd.DataFrame()
         try:
-            # Use helper CLI to download history (workaround for user-agent issues)
+            cli_path = SCRIPTS_DIR / "fetch_history_cli.py"
             result = subprocess.run(
-                [sys.executable, "fetch_history_cli.py", "--ticker", tkr_hist, "--period", "1y", "--interval", "1d"],
+                [sys.executable, str(cli_path), "--ticker", tkr_hist, "--period", "1y", "--interval", "1d"],
                 capture_output=True,
                 text=True,
                 check=False,
