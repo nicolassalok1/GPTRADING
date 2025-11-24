@@ -3505,7 +3505,7 @@ def run_app_options():
         def _graph_desc(key_suffix: str) -> str:
             """Retourne une description textuelle (10 lignes) du payoff/produit."""
             desc_map = {
-                "american_payoff": """Exercice possible à tout moment jusqu'à T.
+            "american_payoff": """Exercice possible à tout moment jusqu'à T.
 Payoff terminal vanilla (call/put).
 Valeur au moins égale à l’européenne.
 Sensibilité dividendes (call) et taux (put).
@@ -3645,7 +3645,7 @@ Delta sur l’actif, pas sur FX.
 Utilisé en cross-currency.
 Peut inclure ajustement de drift.
 Graphique: vanilla indicative en devise locale.""",
-                "rainbow_graph": """Option multi-actifs sur max ou min.
+            "rainbow_graph": """Option multi-actifs sur max ou min.
 Call sur max: profite du meilleur actif.
 Put sur min: protège le pire actif.
 Forte dépendance corrélation.
@@ -3655,7 +3655,27 @@ Payoff non additif, choisit un extrême.
 Vue relative entre actifs.
 Peut utiliser des weights asymétriques.
 Graphique: vanilla indicative sur actif de ref.""",
-                "basket_graph": """Payoff sur combinaison pondérée d’actifs.
+            "barrier_graph": """Option barrière : payoff vanilla modifié par franchissement (up/down, in/out).
+Knock-in : l’option s’active si la barrière est touchée.
+Knock-out : l’option s’éteint si la barrière est touchée.
+Sensibilité au chemin et à la volatilité.
+Plus la barrière est proche, plus la prime est réduite (out) ou augmentée (in).
+Paramètres clés : niveau, direction, knock, style (call/put).
+Risque de gap : déclenchement instantané possible.
+Payoff final sinon vanilla si condition (non) atteinte.
+Utilisée pour prix réduits ou vues sur un range.
+Gestion fine du niveau critique pour calibrer le risque/prix.""",
+            "binary_barrier_graph": """Barrière digitale : paie un montant fixe selon barrière + position finale.
+Combine logique barrière (up/down, in/out) et payoff binaire.
+Sensibilité au chemin et à la vol, gamma concentré autour de la barrière/strike.
+Knock-out : paiement nul si barrière touchée (ou inverse pour knock-in).
+Payout fixe simplifie mais accentue le risque de saut.
+Paramètres : barrière, direction, knock, payout, éventuel strike.
+Souvent utilisée en structurés à rendement élevé.
+Probabilité de survie/activation cruciale dans la prime.
+Risque de discontinuité si le niveau est touché.
+Profil final en step function conditionnée au scénario de barrière.""",
+            "basket_graph": """Payoff sur combinaison pondérée d’actifs.
 Peut être moyenne, max ou min.
 Corrélation influe fortement le prix.
 Diversification réduit la variance.
@@ -3665,7 +3685,77 @@ Delta réparti selon pondérations.
 Utilisé pour couvrir/exprimer une vue panier.
 Path-indépendant si payoff terminal.
 Graphique: vanilla indicative sur panier vs S_T.""",
-            }
+            "european_graph": """Option européenne exerçable uniquement à l’échéance.
+Payoff terminal vanilla (call/put) au strike K.
+Sensibilité aux paramètres S0, K, T, r, q, σ.
+Pas d’exercice anticipé : pas d’effet de dividende sur call.
+Base de comparaison pour d’autres styles d’options.
+Delta/Gamma/Theta/Vega classiques du modèle BSM.
+Surface de prix fonction de S et K autour des valeurs communes.
+Risque limité à la prime pour un acheteur.
+Payout linéaire au-dessus ou en dessous de K selon call/put.
+Référence pour calibrer et comparer d’autres modèles.""",
+            "straddle_graph": """Straddle = call + put au même strike K.
+Profil symétrique : gagne sur gros mouvements haussiers/baisse.
+P&L négatif autour de K à cause du double paiement de prime.
+Delta quasi nul au centre, gamma élevé proche de K.
+Vega positif : profite d’une hausse de volatilité.
+Theta négatif important (deux primes).
+Convient pour parier sur un mouvement sans direction.
+Risque limité à la somme des primes.
+Break-even à K ± primes cumulées.
+Payoff en V double (somme des deux vanillas).""",
+            "strangle_graph": """Strangle = put OTM + call OTM.
+Plus cheap qu’un straddle (strikes décalés).
+Profil gagne sur mouvements importants hors de [K_put, K_call].
+Delta proche de zéro au centre, gamma moins concentré.
+Vega positif, theta négatif mais moindre qu’un straddle.
+Risque limité aux primes, gain illimité sur extrêmes.
+Utilisé pour parier sur volatilité avec coût réduit.
+Break-even éloignés : K_put – primes, K_call + primes.
+Sensibilité aux shifts de vol implicite sur deux ailes.
+Payoff en V large (put bas, call haut).""",
+            "call_spread_graph": """Bull call spread : long call K1, short call K2>K1.
+Coût réduit par la jambe short, gain plafonné.
+Delta positif, gamma modéré; vega réduit vs call nu.
+Theta peut être moins négatif selon distance des strikes.
+Risque limité à la prime nette.
+Max profit = (K2-K1) - prime nette.
+Max perte = prime nette payée.
+Profil directionnel haussier avec cap de gain.
+Sensibilité au skew entre strikes.
+Payoff en rampe puis plateau après K2.""",
+            "put_spread_graph": """Bear put spread : long put K1, short put K2<K1.
+Coût réduit par put short, gain plafonné.
+Delta négatif, gamma modéré; vega réduit vs put nu.
+Theta peut être moins négatif.
+Max profit = (K1-K2) - prime nette.
+Max perte = prime nette payée.
+Directionnel baissier avec cap de gain.
+Sensibilité au skew put.
+Risque limité à la prime nette.
+Payoff en rampe inverse puis plateau sous K2.""",
+            "butterfly_graph": """Butterfly call classique : long ailes, short 2 calls au centre.
+Profil quasi plat, pic de gain autour du strike central.
+Delta ~0 au centre, gamma élevé près du centre.
+Vega négatif (short vol), theta positif autour de K.
+Coût faible, risque limité à la prime.
+Gain max limité au centre si S≈K_mid.
+Perte max = prime nette si S très éloigné.
+Pari sur faible volatilité / range trading.
+Payoff en tente autour du strike central.
+Sensibilité au timing d’expiration des jambes short.""",
+            "condor_graph": """Condor : 4 calls échelonnés (ou puts).
+Profil plus plat qu’une butterfly, plateau de gain plus large.
+Delta ~0 au centre, gamma plus doux.
+Vega négatif, theta souvent positif si crédit.
+Gain limité entre strikes courts, perte limitée aux extrêmes.
+Crédit/débit selon construction.
+Pari sur range plus large qu’une butterfly.
+Sensibilité au skew entre strikes extrêmes et intermédiaires.
+Risque borné par l’écart ailes/extérieures.
+Payoff plateau central avec deux pentes douces."""
+        }
             text = desc_map.get(key_suffix, "")
             if not text:
                 return ""
@@ -4975,6 +5065,7 @@ Graphique: vanilla indicative sur panier vs S_T.""",
 
 
         with tab_lookback:
+            _render_option_text("Lookback floating (approx payoff)", "lookback_graph")
             st.header("Options lookback (floating strike)")
             render_unlock_sidebar_button("tab_lookback", "🔓 Réactiver T (onglet Lookback)")
             lb_run_flag = st.session_state.get(_k("run_path_lookback_done"), False)
@@ -4983,7 +5074,6 @@ Graphique: vanilla indicative sur panier vs S_T.""",
                     st.session_state[_k("run_path_lookback_done")] = True
                     lb_run_flag = True
                     st.rerun()
-                st.info("Clique pour lancer les pricings Lookback et afficher les dropdowns.")
             if lb_run_flag:
                 render_general_definition_explainer(
                     "🔍 Comprendre les options lookback",
@@ -5144,12 +5234,12 @@ Graphique: vanilla indicative sur panier vs S_T.""",
         with tab_barrier:
             st.header("Options barrière")
             render_unlock_sidebar_button("tab_barrier", "🔓 Réactiver T (onglet Barrière)")
+            _render_option_text("Barrière (MC)", "barrier_graph")
             barrier_run_flag = st.session_state.get(_k("run_barrier_done"), False)
             if not barrier_run_flag:
                 if st.button("🚀 Lancer tous les pricings Barrière", key=_k("run_barrier_btn"), type="primary"):
                     st.session_state[_k("run_barrier_done")] = True
                     st.rerun()
-                st.info("Clique pour lancer les pricings Barrière et afficher les dropdowns.")
 
             if barrier_run_flag:
                 render_general_definition_explainer(
@@ -5600,6 +5690,7 @@ Graphique: vanilla indicative sur panier vs S_T.""",
 
         with tab_bermudan:
             st.header("Option bermudéenne")
+            _render_option_text(f"bermuda ({option_label})", "bermuda_payoff")
             cpflag_bmd = option_label
             cpflag_bmd_char = option_char
             st.caption("Type fixé par l’onglet Call / Put en haut de page.")
@@ -5693,7 +5784,6 @@ Graphique: vanilla indicative sur panier vs S_T.""",
                     st.session_state[_k("run_basket_done")] = True
                     basket_run_flag = True
                     st.rerun()
-                st.info("Clique pour lancer le module Basket et afficher les dropdowns / heatmaps.")
             if basket_run_flag:
                 render_general_definition_explainer(
                     "🧺 Comprendre les options basket",
@@ -5740,12 +5830,12 @@ Graphique: vanilla indicative sur panier vs S_T.""",
 
 
         with tab_asian:
+            _render_option_text("Asian (payoff terminal)", "asian_graph")
             run_flag = st.session_state.get(_k("run_path_asian_done"), False)
             if not run_flag:
                 if st.button("🚀 Lancer tous les pricings Asian", key=_k("run_path_asian_btn"), type="primary"):
                     st.session_state[_k("run_path_asian_done")] = True
                     st.rerun()
-                st.info("Clique pour lancer les pricings et afficher les dropdowns Asian.")
             else:
                 ui_asian_options(
                     spot_default=common_spot_value,
@@ -5766,7 +5856,6 @@ Graphique: vanilla indicative sur panier vs S_T.""",
             if _flag_ic:
                 _render_structure_panel("Iron Condor")
             else:
-                st.info("Clique pour lancer le pricing Iron Condor.")
             _render_payoff_dropdown(
                 "Iron Condor",
                 "Crédit maximum au centre (entre strikes courts), perte plafonnée entre les ailes longues.",
@@ -5798,7 +5887,6 @@ Graphique: vanilla indicative sur panier vs S_T.""",
             if _flag_dig:
                 _render_structure_panel("Digital (cash-or-nothing)")
             else:
-                st.info("Clique pour lancer le pricing Digital.")
 
         with tab_asset_on:
             _flag_asset = st.session_state.get(_k("run_asset_on_done"), False)
@@ -5810,16 +5898,14 @@ Graphique: vanilla indicative sur panier vs S_T.""",
             if _flag_asset:
                 _render_structure_panel("Asset-or-nothing")
             else:
-                st.info("Clique pour lancer le pricing Asset-or-nothing.")
 
         with tab_forward_start:
-            run_flag = st.session_state.get(_k("run_path_forward_done"), False)
             _render_option_text("Forward-start (approx payoff)", "forward_start_graph")
+            run_flag = st.session_state.get(_k("run_path_forward_done"), False)
             if not run_flag:
                 if st.button("🚀 Lancer tous les pricings Forward-start", key=_k("run_path_forward_btn"), type="primary"):
                     st.session_state[_k("run_path_forward_done")] = True
                     st.rerun()
-                st.info("Clique pour lancer les pricings Forward-start et afficher les dropdowns.")
             else:
                 _render_structure_panel("Forward-start option")
 
@@ -5833,7 +5919,6 @@ Graphique: vanilla indicative sur panier vs S_T.""",
             if _flag_chooser:
                 _render_structure_panel("Chooser option")
             else:
-                st.info("Clique pour lancer le pricing Chooser.")
 
         with tab_straddle:
             _flag = st.session_state.get(_k("run_straddle_done"), False)
@@ -5844,7 +5929,6 @@ Graphique: vanilla indicative sur panier vs S_T.""",
             if _flag:
                 _render_structure_panel("Straddle")
             else:
-                st.info("Clique pour lancer le pricing Straddle.")
             _render_payoff_dropdown(
                 "Straddle",
                 "Zone de gain : au-delà des strikes K±, la courbe de payoff devient positive (symétrique Call+Put).",
@@ -5861,7 +5945,6 @@ Graphique: vanilla indicative sur panier vs S_T.""",
             if _flag:
                 _render_structure_panel("Strangle")
             else:
-                st.info("Clique pour lancer le pricing Strangle.")
             _render_payoff_dropdown(
                 "Strangle",
                 "Zone de gain : en dehors des strikes éloignés (put bas, call haut), payoff devient positif.",
@@ -5877,7 +5960,6 @@ Graphique: vanilla indicative sur panier vs S_T.""",
             if _flag:
                 _render_structure_panel("Call spread")
             else:
-                st.info("Clique pour lancer le pricing Call spread.")
             _render_payoff_dropdown(
                 "Call spread",
                 "Zone de gain : entre K (long call) et K2 (short call), payoff positif plafonné après K2.",
@@ -5893,7 +5975,6 @@ Graphique: vanilla indicative sur panier vs S_T.""",
             if _flag:
                 _render_structure_panel("Put spread")
             else:
-                st.info("Clique pour lancer le pricing Put spread.")
             _render_payoff_dropdown(
                 "Put spread",
                 "Zone de gain : entre Kbas (put short) et Khaut (put long). Payoff plafonné au-dessus de Khaut.",
@@ -5912,7 +5993,6 @@ Graphique: vanilla indicative sur panier vs S_T.""",
             if _flag:
                 _render_structure_panel("Butterfly")
             else:
-                st.info("Clique pour lancer le pricing Butterfly.")
             _render_payoff_dropdown(
                 "Butterfly",
                 "Zone de gain : centrée autour de K2 (strikes courts), payoff en forme de tente, perte en dehors.",
@@ -5928,7 +6008,6 @@ Graphique: vanilla indicative sur panier vs S_T.""",
             if _flag:
                 _render_structure_panel("Condor")
             else:
-                st.info("Clique pour lancer le pricing Condor.")
             _render_payoff_dropdown(
                 "Condor",
                 "Zone de gain : plateau central entre strikes courts, pertes en dehors des ailes.",
@@ -5949,7 +6028,6 @@ Graphique: vanilla indicative sur panier vs S_T.""",
             if _flag_ib:
                 _render_structure_panel("Iron Butterfly")
             else:
-                st.info("Clique pour lancer le pricing Iron Butterfly.")
             _render_payoff_dropdown(
                 "Iron Butterfly",
                 "Straddle vendu au centre, ailes longues protègent en dehors. Payoff en tente inversée (crédit maximal autour de K).",
@@ -5968,6 +6046,7 @@ Graphique: vanilla indicative sur panier vs S_T.""",
 
         with tab_calendar:
             _flag_cal = st.session_state.get(_k("run_calendar_done"), False)
+            _render_option_text("Calendar spread", "calendar_graph")
             if not _flag_cal:
                 if st.button("🚀 Lancer le pricing Calendar spread", key=_k("run_calendar_btn"), type="primary"):
                     st.session_state[_k("run_calendar_done")] = True
@@ -5975,10 +6054,10 @@ Graphique: vanilla indicative sur panier vs S_T.""",
             if _flag_cal:
                 _render_structure_panel("Calendar spread")
             else:
-                st.info("Clique pour lancer le pricing Calendar spread.")
 
         with tab_diagonal:
             _flag_diag = st.session_state.get(_k("run_diagonal_done"), False)
+            _render_option_text("Diagonal spread", "diagonal_graph")
             if not _flag_diag:
                 if st.button("🚀 Lancer le pricing Diagonal spread", key=_k("run_diagonal_btn"), type="primary"):
                     st.session_state[_k("run_diagonal_done")] = True
@@ -5986,10 +6065,10 @@ Graphique: vanilla indicative sur panier vs S_T.""",
             if _flag_diag:
                 _render_structure_panel("Diagonal spread")
             else:
-                st.info("Clique pour lancer le pricing Diagonal spread.")
 
         with tab_binary_barrier:
             barrier_run_flag_local = st.session_state.get(_k("run_binary_barrier_done"), False)
+            _render_option_text("Binary barrière (digital)", "binary_barrier_graph")
             if not barrier_run_flag_local:
                 if st.button("🚀 Lancer le pricing Binary barrière", key=_k("run_binary_barrier_btn"), type="primary"):
                     st.session_state[_k("run_binary_barrier_done")] = True
@@ -5997,40 +6076,40 @@ Graphique: vanilla indicative sur panier vs S_T.""",
             if barrier_run_flag_local:
                 _render_structure_panel("Binary barrier (digital)")
             else:
-                st.info("Clique pour lancer le pricing Binary barrière.")
 
         with tab_asian_geo:
+            _render_option_text("Asian géométrique (payoff terminal)", "asian_geo_graph")
             run_flag = st.session_state.get(_k("run_path_asian_geo_done"), False)
             if not run_flag:
                 if st.button("🚀 Lancer tous les pricings Asian géométrique", key=_k("run_path_asian_geo_btn"), type="primary"):
                     st.session_state[_k("run_path_asian_geo_done")] = True
                     st.rerun()
-                st.info("Clique pour lancer les pricings Asian géométrique et afficher les dropdowns.")
             else:
                 _render_structure_panel("Asian géométrique")
 
         with tab_lookback_fixed:
+            _render_option_text("Lookback fixed (approx payoff)", "lookback_fixed_graph")
             run_flag = st.session_state.get(_k("run_path_lookback_fixed_done"), False)
             if not run_flag:
                 if st.button("🚀 Lancer tous les pricings Lookback fixed", key=_k("run_path_lookback_fixed_btn"), type="primary"):
                     st.session_state[_k("run_path_lookback_fixed_done")] = True
                     st.rerun()
-                st.info("Clique pour lancer les pricings Lookback fixed et afficher les dropdowns.")
             else:
                 _render_structure_panel("Lookback fixed (MC)")
 
         with tab_cliquet:
+            _render_option_text("Cliquet / Ratchet (approx payoff)", "cliquet_graph")
             run_flag = st.session_state.get(_k("run_path_cliquet_done"), False)
             if not run_flag:
                 if st.button("🚀 Lancer tous les pricings Cliquet / Ratchet", key=_k("run_path_cliquet_btn"), type="primary"):
                     st.session_state[_k("run_path_cliquet_done")] = True
                     st.rerun()
-                st.info("Clique pour lancer les pricings Cliquet / Ratchet et afficher les dropdowns.")
             else:
                 _render_structure_panel("Cliquet / Ratchet (MC)")
 
         with tab_quanto:
             _flag_quanto = st.session_state.get(_k("run_quanto_done"), False)
+            _render_option_text("Quanto option", "quanto_graph")
             if not _flag_quanto:
                 if st.button("🚀 Lancer le pricing Quanto", key=_k("run_quanto_btn"), type="primary"):
                     st.session_state[_k("run_quanto_done")] = True
@@ -6038,10 +6117,10 @@ Graphique: vanilla indicative sur panier vs S_T.""",
             if _flag_quanto:
                 _render_structure_panel("Quanto option")
             else:
-                st.info("Clique pour lancer le pricing Quanto.")
 
         with tab_rainbow:
             _flag_rainbow = st.session_state.get(_k("run_rainbow_done"), False)
+            _render_option_text("Rainbow option", "rainbow_graph")
             if not _flag_rainbow:
                 if st.button("🚀 Lancer le pricing Rainbow", key=_k("run_rainbow_btn"), type="primary"):
                     st.session_state[_k("run_rainbow_done")] = True
@@ -6049,7 +6128,6 @@ Graphique: vanilla indicative sur panier vs S_T.""",
             if _flag_rainbow:
                 _render_structure_panel("Rainbow option")
             else:
-                st.info("Clique pour lancer le pricing Rainbow.")
 
     tab_call, tab_put = st.tabs(["Call", "Put"])
     for _label, _tab in (("Call", tab_call), ("Put", tab_put)):
