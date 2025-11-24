@@ -2953,7 +2953,7 @@ def run_app_options():
     def ui_heston_full_pipeline(auto_run: bool = False):
 
 
-        col_row = st.columns([3, 1])
+        col_row = st.columns([3, 1], gap="small")
         with col_row[0]:
             ticker = st.text_input(
                 "Ticker (sous-jacent)",
@@ -2966,7 +2966,8 @@ def run_app_options():
             rf_rate = float(st.session_state.get("common_rate", 0.02))
             div_yield = float(st.session_state.get("common_dividend", 0.0))
         with col_row[1]:
-            fetch_btn = st.button("Récupérer les données du ticker", width="stretch", key="heston_cboe_fetch")
+            st.write("")  # aligne verticalement le bouton sur l'input
+            fetch_btn = st.button("Récupérer les données du ticker", type="primary", key="heston_cboe_fetch")
 
         col_cfg1, col_cfg2 = st.columns(2)
         with col_cfg1:
@@ -6105,7 +6106,7 @@ BASE_URL = "https://paper-api.alpaca.markets/"
 api = tradeapi.REST(key, secret_key, BASE_URL, api_version="v2")
 
 # Page config
-st.set_page_config(page_title="AI Trading Bot", page_icon="📈", layout="wide")
+st.set_page_config(page_title="AI Trading Bot", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
 
 # Helper functions
 @st.cache_data(ttl=10)
@@ -7296,8 +7297,6 @@ with st.expander("📘 Tutoriel d'utilisation de l'outil"):
 
 # Sidebar
 with st.sidebar:
-    if st.button("🏠 Retour au Dashboard", key="btn_back_dashboard"):
-        st.session_state["_switch_to_dashboard"] = True
     st.header("⚙️ Settings")
     st.info("Data is refreshed automatically on each interaction")
     if st.button("🔄 Refresh Data"):
@@ -7399,6 +7398,7 @@ with tab1:
     # Forwards P&L
     fwd_positions = load_forwards()
     total_forward_pnl = 0.0
+    total_forward_notional = 0.0
     for fwd in fwd_positions.values():
         qty = float(fwd.get("quantity", 0.0) or 0.0)
         if qty <= 0:
@@ -7409,6 +7409,7 @@ with tab1:
         spot_now = float(get_data(sym).get("price", 0.0) or 0.0) if sym else 0.0
         price_fwd = float(fwd.get("forward_price", 0.0) or 0.0)
         total_forward_pnl += mult * (spot_now - price_fwd) * qty
+        total_forward_notional += abs(price_fwd * qty)
 
     st.markdown("### 📊 Synthèse P&L")
     col_spot, col_opt, col_fwd = st.columns(3)
@@ -7419,7 +7420,8 @@ with tab1:
         delta_opt = f"Open {open_options_pnl:+.2f} | Réalisé {realized_options_pnl:+.2f}"
         st.metric("P&L Options (open+réalisé)", f"${total_options_pnl:.2f}", delta=delta_opt)
     with col_fwd:
-        st.metric("P&L Forwards", f"${total_forward_pnl:.2f}")
+        delta_fwd = f"{(total_forward_pnl / total_forward_notional * 100):.2f}%" if total_forward_notional > 0 else None
+        st.metric("P&L Forwards", f"${total_forward_pnl:.2f}", delta=delta_fwd)
 
     # AI Assistant section moved here
     st.subheader("🤖 AI Portfolio Assistant")
