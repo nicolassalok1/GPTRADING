@@ -3505,7 +3505,7 @@ def run_app_options():
         def _graph_desc(key_suffix: str) -> str:
             """Retourne une description textuelle (10 lignes) du payoff/produit."""
             desc_map = {
-            "american_payoff": """Exercice possible à tout moment jusqu'à T.
+                "american_payoff": """Exercice possible à tout moment jusqu'à T.
 Payoff terminal vanilla (call/put).
 Valeur au moins égale à l’européenne.
 Sensibilité dividendes (call) et taux (put).
@@ -3645,7 +3645,7 @@ Delta sur l’actif, pas sur FX.
 Utilisé en cross-currency.
 Peut inclure ajustement de drift.
 Graphique: vanilla indicative en devise locale.""",
-            "rainbow_graph": """Option multi-actifs sur max ou min.
+                "rainbow_graph": """Option multi-actifs sur max ou min.
 Call sur max: profite du meilleur actif.
 Put sur min: protège le pire actif.
 Forte dépendance corrélation.
@@ -3655,7 +3655,7 @@ Payoff non additif, choisit un extrême.
 Vue relative entre actifs.
 Peut utiliser des weights asymétriques.
 Graphique: vanilla indicative sur actif de ref.""",
-            "barrier_graph": """Option barrière : payoff vanilla modifié par franchissement (up/down, in/out).
+                "barrier_graph": """Option barrière : payoff vanilla modifié par franchissement (up/down, in/out).
 Knock-in : l’option s’active si la barrière est touchée.
 Knock-out : l’option s’éteint si la barrière est touchée.
 Sensibilité au chemin et à la volatilité.
@@ -3665,7 +3665,7 @@ Risque de gap : déclenchement instantané possible.
 Payoff final sinon vanilla si condition (non) atteinte.
 Utilisée pour prix réduits ou vues sur un range.
 Gestion fine du niveau critique pour calibrer le risque/prix.""",
-            "binary_barrier_graph": """Barrière digitale : paie un montant fixe selon barrière + position finale.
+                "binary_barrier_graph": """Barrière digitale : paie un montant fixe selon barrière + position finale.
 Combine logique barrière (up/down, in/out) et payoff binaire.
 Sensibilité au chemin et à la vol, gamma concentré autour de la barrière/strike.
 Knock-out : paiement nul si barrière touchée (ou inverse pour knock-in).
@@ -3675,7 +3675,7 @@ Souvent utilisée en structurés à rendement élevé.
 Probabilité de survie/activation cruciale dans la prime.
 Risque de discontinuité si le niveau est touché.
 Profil final en step function conditionnée au scénario de barrière.""",
-            "basket_graph": """Payoff sur combinaison pondérée d’actifs.
+                "basket_graph": """Payoff sur combinaison pondérée d’actifs.
 Peut être moyenne, max ou min.
 Corrélation influe fortement le prix.
 Diversification réduit la variance.
@@ -3685,7 +3685,7 @@ Delta réparti selon pondérations.
 Utilisé pour couvrir/exprimer une vue panier.
 Path-indépendant si payoff terminal.
 Graphique: vanilla indicative sur panier vs S_T.""",
-            "european_graph": """Option européenne exerçable uniquement à l’échéance.
+                "european_graph": """Option européenne exerçable uniquement à l’échéance.
 Payoff terminal vanilla (call/put) au strike K.
 Sensibilité aux paramètres S0, K, T, r, q, σ.
 Pas d’exercice anticipé : pas d’effet de dividende sur call.
@@ -3695,7 +3695,7 @@ Surface de prix fonction de S et K autour des valeurs communes.
 Risque limité à la prime pour un acheteur.
 Payout linéaire au-dessus ou en dessous de K selon call/put.
 Référence pour calibrer et comparer d’autres modèles.""",
-            "straddle_graph": """Straddle = call + put au même strike K.
+                "straddle_graph": """Straddle = call + put au même strike K.
 Profil symétrique : gagne sur gros mouvements haussiers/baisse.
 P&L négatif autour de K à cause du double paiement de prime.
 Delta quasi nul au centre, gamma élevé proche de K.
@@ -3705,7 +3705,7 @@ Convient pour parier sur un mouvement sans direction.
 Risque limité à la somme des primes.
 Break-even à K ± primes cumulées.
 Payoff en V double (somme des deux vanillas).""",
-            "strangle_graph": """Strangle = put OTM + call OTM.
+                "strangle_graph": """Strangle = put OTM + call OTM.
 Plus cheap qu’un straddle (strikes décalés).
 Profil gagne sur mouvements importants hors de [K_put, K_call].
 Delta proche de zéro au centre, gamma moins concentré.
@@ -3715,7 +3715,7 @@ Utilisé pour parier sur volatilité avec coût réduit.
 Break-even éloignés : K_put – primes, K_call + primes.
 Sensibilité aux shifts de vol implicite sur deux ailes.
 Payoff en V large (put bas, call haut).""",
-            "call_spread_graph": """Bull call spread : long call K1, short call K2>K1.
+                "call_spread_graph": """Bull call spread : long call K1, short call K2>K1.
 Coût réduit par la jambe short, gain plafonné.
 Delta positif, gamma modéré; vega réduit vs call nu.
 Theta peut être moins négatif selon distance des strikes.
@@ -3725,7 +3725,7 @@ Max perte = prime nette payée.
 Profil directionnel haussier avec cap de gain.
 Sensibilité au skew entre strikes.
 Payoff en rampe puis plateau après K2.""",
-            "put_spread_graph": """Bear put spread : long put K1, short put K2<K1.
+                "put_spread_graph": """Bear put spread : long put K1, short put K2<K1.
 Coût réduit par put short, gain plafonné.
 Delta négatif, gamma modéré; vega réduit vs put nu.
 Theta peut être moins négatif.
@@ -3735,7 +3735,7 @@ Directionnel baissier avec cap de gain.
 Sensibilité au skew put.
 Risque limité à la prime nette.
 Payoff en rampe inverse puis plateau sous K2.""",
-            "butterfly_graph": """Butterfly call classique : long ailes, short 2 calls au centre.
+                "butterfly_graph": """Butterfly call classique : long ailes, short 2 calls au centre.
 Profil quasi plat, pic de gain autour du strike central.
 Delta ~0 au centre, gamma élevé près du centre.
 Vega négatif (short vol), theta positif autour de K.
@@ -3745,7 +3745,7 @@ Perte max = prime nette si S très éloigné.
 Pari sur faible volatilité / range trading.
 Payoff en tente autour du strike central.
 Sensibilité au timing d’expiration des jambes short.""",
-            "condor_graph": """Condor : 4 calls échelonnés (ou puts).
+                "condor_graph": """Condor : 4 calls échelonnés (ou puts).
 Profil plus plat qu’une butterfly, plateau de gain plus large.
 Delta ~0 au centre, gamma plus doux.
 Vega négatif, theta souvent positif si crédit.
@@ -3754,72 +3754,31 @@ Crédit/débit selon construction.
 Pari sur range plus large qu’une butterfly.
 Sensibilité au skew entre strikes extrêmes et intermédiaires.
 Risque borné par l’écart ailes/extérieures.
-Payoff plateau central avec deux pentes douces."""
-        }
+Payoff plateau central avec deux pentes douces.""",
+                "iron_condor_graph": """Iron condor = put spread + call spread (souvent en crédit).
+Plateau de gain central entre les strikes courts.
+Gain max = crédit net si le spot reste dans le corridor.
+Perte limitée en dehors, bornée par la largeur des ailes longues.
+Delta proche de 0 autour du centre; gamma modéré.
+Vega négatif (short vol), theta souvent positif au départ.
+Sensible au skew entre les ailes courtes et longues.
+Ajustable en rapprochant/éloignant les ailes selon le range visé.
+Peut se déboucler avant échéance si la vol se comprime.
+Payoff en plateau central avec pentes symétriques sur les ailes.""",
+                "iron_butterfly_graph": """Iron butterfly = straddle vendu protégé par des ailes longues.
+Crédit maximum au strike central K.
+Perte limitée par les ailes achetées de part et d’autre.
+Delta proche de 0 au centre, gamma élevé près de K.
+Vega négatif, theta positif autour du strike central.
+Adapté à une vue de range étroit et de vol en baisse.
+Risque borné par la largeur des ailes.
+Break-even à K ± (largeur des ailes - crédit net).
+Ajustable en modifiant la distance des ailes.
+Payoff en tente inversée centrée sur K.""",
+            }
             text = desc_map.get(key_suffix, "")
             if not text:
                 return ""
-        # Pour les exotiques/basket, on fournit un paragraphe construit plutôt qu'une liste.
-            paragraph_map = {
-                "digital_graph": (
-                    "Une option digitale (cash-or-nothing) verse un montant fixe si la condition est satisfaite à l'échéance "
-                    "(call : S_T > K, put : S_T < K) et zéro sinon. Le payoff ressemble à un saut autour du strike ; la sensibilité "
-                    "est concentrée près de K (gamma/vega en pointe) et dépend fortement de la volatilité."
-                ),
-                "asset_on_graph": (
-                    "L’asset-or-nothing paie le niveau du sous-jacent (ou rien) si la condition est remplie (call : S_T > K, "
-                    "put : S_T < K). On obtient un payoff proportionnel au spot dans le scénario favorable, sinon nul, ce qui "
-                    "combine une option binaire et une exposition linéaire conditionnelle."
-                ),
-                "chooser_graph": (
-                    "L’option chooser offre le choix, à une date t_choice avant l’échéance, entre un call ou un put. Avant t_choice "
-                    "la prime incorpore cette flexibilité ; après la décision, le contrat devient une vanilla classique sur le type "
-                    "choisi. Idéal pour couvrir une incertitude directionnelle jusqu’à une date clé."
-                ),
-                "quanto_graph": (
-                    "Une option quanto porte sur un sous-jacent coté dans une devise étrangère mais règle en devise locale à un taux "
-                    "de change figé. Le payoff vanilla est neutralisé du risque FX, tout en conservant l’exposition au sous-jacent ; "
-                    "la corrélation actif/FX et le drift ajusté influencent la prime."
-                ),
-                "rainbow_graph": (
-                    "Une option rainbow multi-actifs paye sur l’extrême d’un panier (max ou min). Un call sur le max profite de "
-                    "l’actif le plus performant ; un put sur le min protège contre le pire. La corrélation entre actifs est déterminante, "
-                    "et le payoff sélectionne un seul composant au dénouement."
-                ),
-                "basket_graph": (
-                    "Une option basket paye sur une combinaison pondérée de plusieurs actifs (moyenne, parfois max/min). La corrélation "
-                    "module la diversification : plus elle est faible, plus la volatilité du panier est réduite. Le payoff terminal reste "
-                    "de type call/put sur la valeur agrégée du panier."
-                ),
-                "asian_graph": (
-                    "Une option asiatique arithmétique dépend de la moyenne des prix observés pendant la vie du contrat. Le payoff est "
-                    "moins sensible aux pics de volatilité qu’une vanilla, et la prime diminue avec le lissage. Le nombre d’observations "
-                    "et leur calendrier influencent directement la valeur."
-                ),
-                "asian_geo_graph": (
-                    "L’asiatique géométrique utilise la moyenne géométrique des prix observés. Elle est toujours inférieure ou égale à "
-                    "l’asiatique arithmétique. La formule fermée est disponible et sert souvent de contrôle pour des simulations MC."
-                ),
-                "lookback_graph": (
-                    "La lookback floating a un strike défini par un extrême (max ou min) atteint pendant la vie du contrat. Le payoff "
-                    "final compare S_T à cet extrême, offrant une protection contre un mauvais timing d’entrée. Produit fortement "
-                    "path-dependent avec convexité élevée."
-                ),
-                "lookback_fixed_graph": (
-                    "La lookback fixed a un strike fixé à l’origine mais un payoff dépendant du max/min atteint pendant la vie. Le spot "
-                    "final est comparé à l’extrême historique, ce qui récompense une trajectoire favorable. Path-dependent mais strike constant."
-                ),
-                "forward_start_graph": (
-                    "Une forward-start fixe son strike à une date future T_start (souvent k × S_Tstart). Avant T_start, l’option reste "
-                    "en attente; après T_start, elle devient une vanilla avec le strike déterminé. Utile pour couvrir des émissions futures."
-                ),
-                "cliquet_graph": (
-                    "Une option cliquet cumule des coupons capés/floorés à chaque période, souvent avec réinitialisation du strike. Le payoff "
-                    "dépend de la séquence de rendements, avec une vega et une theta réparties sur plusieurs périodes. Produit typiquement valorisé en MC."
-                ),
-            }
-            if key_suffix in paragraph_map:
-                return paragraph_map[key_suffix]
             lines = text.strip("\n").splitlines()
             if len(lines) < 10:
                 lines += [""] * (10 - len(lines))
@@ -3841,6 +3800,7 @@ Payoff plateau central avec deux pentes douces."""
             *,
             strike2_factor: float = 1.05,
             strike_lines_override: list[float] | Callable[[float, float], list[float]] | None = None,
+            desc_key_suffix: str | None = None,
         ):
             with st.expander(f"🧭 Comprendre le payoff – {product}", expanded=False):
                 K = float(st.session_state.get("common_strike_value", common_strike_value))
@@ -3856,6 +3816,10 @@ Payoff plateau central avec deux pentes douces."""
                 fig = _payoff_plot(xs, ys, f"Payoff {product}", strike_lines=strikes_to_plot)
                 st.plotly_chart(fig, width="stretch", key=_k(f"payoff_{product}"))
                 st.caption(description)
+                desc_key = desc_key_suffix or f"{product.lower().replace(' ', '_').replace('-', '_').replace('/', '_')}_graph"
+                desc = _graph_desc(desc_key)
+                if desc:
+                    st.markdown(desc.replace("\n", "  \n"))
 
         # Helper to avoid duplicate Streamlit keys across Call/Put tabs.
         def _k(base: str) -> str:
@@ -4577,6 +4541,7 @@ Payoff plateau central avec deux pentes douces."""
 
         with tab_european:
             st.header("Option européenne")
+            _render_option_text("Option européenne", "european_graph")
 
             eu_run_flag = st.session_state.get(_k("run_eu_done"), False)
             if not eu_run_flag:
@@ -4806,6 +4771,7 @@ Payoff plateau central avec deux pentes douces."""
             st.header("Option américaine")
             cpflag_am = option_label
             cpflag_am_char = option_char
+            _render_option_text("Option américaine", "american_payoff")
 
             with st.expander("📊 Graph payoff (américaine)", expanded=False):
                 xs = np.linspace(max(0.1, K_common * 0.5), K_common * 1.5, 120)
@@ -5936,6 +5902,7 @@ Payoff plateau central avec deux pentes douces."""
                 "Strangle",
                 "Zone de gain : en dehors des strikes éloignés (put bas, call haut), payoff devient positif.",
                 lambda s, K, K2: max(K - s, 0.0) + max(s - K2, 0.0),
+                strike_lines_override=lambda K, K2: [K, K2],
             )
             _flag = st.session_state.get(_k("run_strangle_done"), False)
             if not _flag:
@@ -6000,6 +5967,7 @@ Payoff plateau central avec deux pentes douces."""
                     - max(s - K2, 0.0)
                     + max(s - (K2 + (K - K * 0.97)), 0.0)
                 ),
+                strike_lines_override=lambda K, K2: [K, K2],
             )
             _flag = st.session_state.get(_k("run_condor_done"), False)
             if not _flag:
