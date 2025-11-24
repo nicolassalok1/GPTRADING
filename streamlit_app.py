@@ -11,6 +11,7 @@ import requests
 import datetime
 import math
 import yfinance as yf
+import re
 from rates_utils import get_r, get_q
 
 # Configuration
@@ -3501,6 +3502,248 @@ def run_app_options():
             fig.update_layout(title=title, xaxis_title="Spot à maturité", yaxis_title="Payoff")
             return fig
 
+        def _graph_desc(key_suffix: str) -> str:
+            """Retourne une description textuelle (10 lignes) du payoff/produit."""
+            desc_map = {
+                "american_payoff": """Exercice possible à tout moment jusqu'à T.
+Payoff terminal vanilla (call/put).
+Valeur au moins égale à l’européenne.
+Sensibilité dividendes (call) et taux (put).
+Early exercise pertinent pour put ITM.
+Delta plus élevé près du strike.
+Gamma plus accentué pour puts ITM.
+Theta peut devenir positif (put ITM).
+Vega dépend du temps restant.
+Profil final: payoff vanilla au strike K.""",
+                "bermuda_payoff": """Exercice autorisé sur dates discrètes.
+Entre européenne (1 date) et américaine (continu).
+Payoff final vanilla si non exercée avant.
+Calendrier d’exercice fixe sur [0, T].
+Valeur augmente avec plus de dates.
+Sensibilité à la fréquence des Bermudes.
+Delta/Theta intermédiaires Am/Eu.
+Vega similaire à l’européenne.
+Taux/dividendes orientent l’exercice.
+Profil final: payoff vanilla au strike K.""",
+                "asian_graph": """Payoff basé sur moyenne arithmétique.
+Réduit l’impact des pics de volatilité.
+Généralement moins cher qu’européenne.
+Sensible au nombre d’observations.
+Variance du payoff plus faible.
+Delta lissé vs vanilla.
+Vega plus faible (moyennage).
+Theta dépend du calendrier de fixings.
+Payoff final reste call/put sur moyenne.
+Graphique: référence vanilla sur S_T.""",
+                "asian_geo_graph": """Payoff basé sur moyenne géométrique.
+Toujours ≤ moyenne arithmétique.
+Formule fermée fréquente.
+Moins sensible aux extrêmes de prix.
+Vega plus faible que l’Asian arith.
+Delta lissé, moins de convexité.
+Utilisable en variable de contrôle MC.
+Sensible au nombre d’observations.
+Payoff final vanilla sur moyenne geom.
+Graphique: référence vanilla sur S_T.""",
+                "lookback_graph": """Strike flottant basé sur extrême du spot.
+Payoff dépend du max/min atteint.
+Protège contre mauvais timing.
+Convexité élevée (path-dependent).
+Vega/Theta diffèrent d’une vanilla.
+Sensibilité à la maturité (plus d’extrêmes).
+Delta lié au rang spot/extrême.
+Valorisation MC ou formules fermées.
+Payoff final compare S_T à l’extrême.
+Graphique: vanilla indicative sur S_T.""",
+                "lookback_fixed_graph": """Strike fixé dès l’origine.
+Payoff compare S_T au max/min historique.
+Récompense trajectoire favorable.
+Path-dependent mais strike constant.
+Vega impactée par incertitude max/min.
+Delta lié à distance spot/extrême.
+Theta influencé par découverte d’extrêmes.
+MC ou formules semi-fermées possibles.
+Payoff final type call/put.
+Graphique: vanilla indicative sur S_T.""",
+                "forward_start_graph": """Strike défini à T_start (k×S).
+Fixe le strike plus tard pour réduire timing risk.
+Payoff final vanilla sur S_T avec strike futur.
+Sensibilité à la vol avant et après T_start.
+Vega séparée pré/post définition strike.
+Theta dépend du délai jusqu’à T_start.
+Utilisé pour options sur émissions futures.
+Delta faible avant T_start, augmente après.
+Prix lié au ratio k et au temps restant.
+Graphique: vanilla indicative sur S_T.""",
+                "cliquet_graph": """Payoff cumule des coupons périodiques.
+Chaque période capée/floorée.
+Réinitialisation du strike/coupon.
+Sensible à la vol moyenne multi-périodes.
+Path-dependent sur rendements sériels.
+Vega répartie sur toutes les périodes.
+Theta proche d’un produit de portage.
+Delta dépend cap/floor et spot courant.
+Souvent valorisé en MC.
+Graphique: vanilla indicative sur S_T final.""",
+                "calendar_graph": """Deux maturités, même strike.
+Long échéance longue, short échéance courte.
+Parie sur vol/passage du temps.
+Theta positif initialement (short proche).
+Vega généralement positive (jambe longue).
+Sensibilité au skew/term structure de vol.
+Payoff non linéaire autour du strike.
+Gamma concentré à l’échéance courte.
+Peut se déboucler après la jambe courte.
+Graphique: vanilla indicative sur S_T.""",
+                "diagonal_graph": """Strikes et maturités différents.
+Combine vertical et calendrier.
+Ajuste directionnel + exposition vol.
+Theta dépend des deux échéances.
+Vega mixte (long/short diff vol).
+Cible un niveau de spot spécifique.
+Sensibilité à la pente de vol implicite.
+Profil asymétrique selon strikes.
+Gestion active après expiration courte.
+Graphique: vanilla indicative sur S_T.""",
+                "digital_graph": """Paiement fixe si condition vraie.
+Call: 1 si S_T > K, sinon 0.
+Put: 1 si S_T < K, sinon 0.
+Sensible à la vol (vega pic autour de K).
+Theta important proche du strike.
+Gamma concentré autour de K.
+Parie sur franchissement, pas amplitude.
+Building block en structurés.
+Payout multiplicatif possible.
+Graphique: step function (référence vanilla).""",
+                "asset_on_graph": """Verse l’actif ou rien.
+Call: paie S_T si S_T > K.
+Put: paie S_T si S_T < K.
+Sensible spot et volatilité.
+Theta accentué près du strike.
+Vega concentrée autour de K.
+Couverture discrète possible.
+Diffère du digital cash par payout.
+Path-indépendant (terminal).
+Graphique: vanilla indicative sur S_T.""",
+                "chooser_graph": """Choix call/put à t_choice.
+Flexibilité intégrée dans la prime.
+Avant t_choice, payoff combiné implicite.
+Sensibilité au timing et à la vol.
+Delta/Vega mixtes avant le choix.
+Après t_choice, devient vanilla choisie.
+Prix ≥ max(call, put) pondéré.
+Couvre incertitude directionnelle.
+Peut modéliser choix investisseur.
+Graphique: vanilla indicative sur S_T final.""",
+                "quanto_graph": """Sous-jacent étranger, payoff en devise locale.
+FX neutralisé (taux de change fixé).
+Supprime le risque de change.
+Sensibilité à corrélation actif/FX si ajustée.
+Vega sur l’actif uniquement.
+Theta vanilla sur l’actif.
+Delta sur l’actif, pas sur FX.
+Utilisé en cross-currency.
+Peut inclure ajustement de drift.
+Graphique: vanilla indicative en devise locale.""",
+                "rainbow_graph": """Option multi-actifs sur max ou min.
+Call sur max: profite du meilleur actif.
+Put sur min: protège le pire actif.
+Forte dépendance corrélation.
+Vega répartie entre actifs.
+Delta/Theta selon leader/trailer.
+Payoff non additif, choisit un extrême.
+Vue relative entre actifs.
+Peut utiliser des weights asymétriques.
+Graphique: vanilla indicative sur actif de ref.""",
+                "basket_graph": """Payoff sur combinaison pondérée d’actifs.
+Peut être moyenne, max ou min.
+Corrélation influe fortement le prix.
+Diversification réduit la variance.
+Vega dépend vols individuelles et corrélation.
+Theta lié au carry de chaque actif.
+Delta réparti selon pondérations.
+Utilisé pour couvrir/exprimer une vue panier.
+Path-indépendant si payoff terminal.
+Graphique: vanilla indicative sur panier vs S_T.""",
+            }
+            text = desc_map.get(key_suffix, "")
+            if not text:
+                return ""
+        # Pour les exotiques/basket, on fournit un paragraphe construit plutôt qu'une liste.
+            paragraph_map = {
+                "digital_graph": (
+                    "Une option digitale (cash-or-nothing) verse un montant fixe si la condition est satisfaite à l'échéance "
+                    "(call : S_T > K, put : S_T < K) et zéro sinon. Le payoff ressemble à un saut autour du strike ; la sensibilité "
+                    "est concentrée près de K (gamma/vega en pointe) et dépend fortement de la volatilité."
+                ),
+                "asset_on_graph": (
+                    "L’asset-or-nothing paie le niveau du sous-jacent (ou rien) si la condition est remplie (call : S_T > K, "
+                    "put : S_T < K). On obtient un payoff proportionnel au spot dans le scénario favorable, sinon nul, ce qui "
+                    "combine une option binaire et une exposition linéaire conditionnelle."
+                ),
+                "chooser_graph": (
+                    "L’option chooser offre le choix, à une date t_choice avant l’échéance, entre un call ou un put. Avant t_choice "
+                    "la prime incorpore cette flexibilité ; après la décision, le contrat devient une vanilla classique sur le type "
+                    "choisi. Idéal pour couvrir une incertitude directionnelle jusqu’à une date clé."
+                ),
+                "quanto_graph": (
+                    "Une option quanto porte sur un sous-jacent coté dans une devise étrangère mais règle en devise locale à un taux "
+                    "de change figé. Le payoff vanilla est neutralisé du risque FX, tout en conservant l’exposition au sous-jacent ; "
+                    "la corrélation actif/FX et le drift ajusté influencent la prime."
+                ),
+                "rainbow_graph": (
+                    "Une option rainbow multi-actifs paye sur l’extrême d’un panier (max ou min). Un call sur le max profite de "
+                    "l’actif le plus performant ; un put sur le min protège contre le pire. La corrélation entre actifs est déterminante, "
+                    "et le payoff sélectionne un seul composant au dénouement."
+                ),
+                "basket_graph": (
+                    "Une option basket paye sur une combinaison pondérée de plusieurs actifs (moyenne, parfois max/min). La corrélation "
+                    "module la diversification : plus elle est faible, plus la volatilité du panier est réduite. Le payoff terminal reste "
+                    "de type call/put sur la valeur agrégée du panier."
+                ),
+                "asian_graph": (
+                    "Une option asiatique arithmétique dépend de la moyenne des prix observés pendant la vie du contrat. Le payoff est "
+                    "moins sensible aux pics de volatilité qu’une vanilla, et la prime diminue avec le lissage. Le nombre d’observations "
+                    "et leur calendrier influencent directement la valeur."
+                ),
+                "asian_geo_graph": (
+                    "L’asiatique géométrique utilise la moyenne géométrique des prix observés. Elle est toujours inférieure ou égale à "
+                    "l’asiatique arithmétique. La formule fermée est disponible et sert souvent de contrôle pour des simulations MC."
+                ),
+                "lookback_graph": (
+                    "La lookback floating a un strike défini par un extrême (max ou min) atteint pendant la vie du contrat. Le payoff "
+                    "final compare S_T à cet extrême, offrant une protection contre un mauvais timing d’entrée. Produit fortement "
+                    "path-dependent avec convexité élevée."
+                ),
+                "lookback_fixed_graph": (
+                    "La lookback fixed a un strike fixé à l’origine mais un payoff dépendant du max/min atteint pendant la vie. Le spot "
+                    "final est comparé à l’extrême historique, ce qui récompense une trajectoire favorable. Path-dependent mais strike constant."
+                ),
+                "forward_start_graph": (
+                    "Une forward-start fixe son strike à une date future T_start (souvent k × S_Tstart). Avant T_start, l’option reste "
+                    "en attente; après T_start, elle devient une vanilla avec le strike déterminé. Utile pour couvrir des émissions futures."
+                ),
+                "cliquet_graph": (
+                    "Une option cliquet cumule des coupons capés/floorés à chaque période, souvent avec réinitialisation du strike. Le payoff "
+                    "dépend de la séquence de rendements, avec une vega et une theta réparties sur plusieurs périodes. Produit typiquement valorisé en MC."
+                ),
+            }
+            if key_suffix in paragraph_map:
+                return paragraph_map[key_suffix]
+            lines = text.strip("\n").splitlines()
+            if len(lines) < 10:
+                lines += [""] * (10 - len(lines))
+            cleaned = [re.sub(r"^\s*\d+\)\s*", "", ln) for ln in lines[:10]]
+            return "\n".join(cleaned)
+
+        def _render_option_text(label: str, key_suffix: str):
+            """Affiche un expander texte décrivant le payoff et la spécificité."""
+            desc = _graph_desc(key_suffix)
+            if not desc:
+                return
+            with st.expander(f"ℹ️ À propos – {label}", expanded=False):
+                st.markdown(desc.replace("\n", "  \n"))
+
         def _render_payoff_dropdown(
             product: str,
             description: str,
@@ -4244,19 +4487,6 @@ def run_app_options():
 
         with tab_european:
             st.header("Option européenne")
-            render_general_definition_explainer(
-                "📘 Comprendre les options européennes",
-                (
-                    "- **Nature du produit** : une option européenne donne le droit, mais pas l'obligation, d'acheter (call) ou de vendre (put) un sous-jacent à une date d'échéance `T` et à un prix fixé à l'avance `K`. L'exercice ne peut avoir lieu **qu'à la maturité**, jamais avant.\n"
-                    "- **Payoff à l'échéance** :\n"
-                    "  - Call : `max(S_T - K, 0)` – on exerce seulement si le sous-jacent vaut plus que le strike.\n"
-                    "  - Put  : `max(K - S_T, 0)` – on exerce seulement si le sous-jacent vaut moins que le strike.\n"
-                    "- **Mesure neutre au risque** : dans les modèles utilisés ici, on raisonne sous une mesure où le sous-jacent rapporte le taux sans risque ajusté du dividende. Le prix de l'option est alors l'espérance actualisée de ce payoff.\n"
-                    "- **Variables structurantes** : le prix dépend principalement de `S0` (spot), `K` (strike), `T` (maturité), `r` (taux sans risque), `d` (dividende continu) et `σ` (volatilité implicite ou historique selon le modèle).\n"
-                    "- **Interprétation des heatmaps** : les cartes de chaleur affichées dans cet onglet montrent comment le prix du call et du put varie lorsque l'on fait bouger `S` et `K` autour des valeurs communes définies dans la barre latérale, pour un `T` et des paramètres donnés.\n"
-                    "- **Rôle de cet onglet** : il sert de point de départ pour comparer différentes façons de pricer le même produit : modèle de diffusion simple (BSM), simulation Monte Carlo, ou modèle de volatilité stochastique (Heston)."
-                ),
-            )
 
             eu_run_flag = st.session_state.get(_k("run_eu_done"), False)
             if not eu_run_flag:
@@ -4484,17 +4714,6 @@ def run_app_options():
 
         with tab_american:
             st.header("Option américaine")
-            render_unlock_sidebar_button("tab_american", "🔓 Réactiver T (onglet Américain)")
-            render_general_definition_explainer(
-                "📗 Comprendre les options américaines",
-                (
-                    "- **Droit d'exercice anticipé** : une option américaine peut être exercée à n'importe quel moment entre la date d'émission et la maturité. Elle offre donc plus de flexibilité qu'une option européenne.\n"
-                    "- **Conséquence sur le prix** : cette flexibilité a une valeur. À paramètres identiques (`S0`, `K`, `T`, `r`, `d`, `σ`), le prix d'une option américaine est **au moins** aussi élevé que celui de l'option européenne correspondante.\n"
-                    "- **Vision dynamique** : le problème de pricing devient un problème de contrôle optimal : à chaque date de la grille temporelle, l'agent choisit entre exercer immédiatement ou conserver l'option.\n"
-                    "- **Lien avec les grecs** : pour les puts notamment, la possibilité d'exercer en avance influence fortement `Delta` et `Theta`, en particulier lorsque le sous-jacent est proche ou sous le strike.\n"
-                    "- **Rôle de cet onglet** : il illustre deux grandes familles d'approches numériques pour ce problème : une méthode Monte Carlo (Longstaff–Schwartz) et une méthode par arbre binomial (CRR)."
-                ),
-            )
             cpflag_am = option_label
             cpflag_am_char = option_char
 
@@ -5381,17 +5600,6 @@ def run_app_options():
 
         with tab_bermudan:
             st.header("Option bermudéenne")
-            render_unlock_sidebar_button("tab_bermudan", "🔓 Réactiver T (onglet Bermuda)")
-            render_general_definition_explainer(
-                "🏝️ Comprendre les options bermudéennes",
-                (
-                    "- **Positionnement** : une option bermudéenne se situe entre l’option européenne (exercice uniquement à l’échéance) et l’option américaine (exercice possible en continu). Ici, l’exercice est possible sur un ensemble discret de dates prédéfinies.\n"
-                    "- **Calendrier d'exercice** : l’investisseur dispose d’une série de dates Bermudes (par exemple mensuelles ou trimestrielles) où il peut choisir d’exercer l’option. En dehors de ces dates, l’option reste inerte.\n"
-                    "- **Impact sur le prix** : plus on multiplie les dates possibles d’exercice, plus le produit se rapproche d’une option américaine en termes de flexibilité et de valorisation.\n"
-                    "- **Usage pratique** : ces produits apparaissent souvent dans les produits structurés et les options exotiques de marché de taux ou de change, où l’on souhaite offrir une flexibilité encadrée.\n"
-                    "- **Objectif de l’onglet** : proposer une valorisation cohérente de ces options à l’aide d’un schéma PDE de type Crank–Nicolson adapté au cadre Bermudéen."
-                ),
-            )
             cpflag_bmd = option_label
             cpflag_bmd_char = option_char
             st.caption("Type fixé par l’onglet Call / Put en haut de page.")
@@ -5478,6 +5686,7 @@ def run_app_options():
                     )
         with tab_grp_basket:
             st.header("Options basket")
+            _render_option_text("Basket option", "basket_graph")
             basket_run_flag = st.session_state.get(_k("run_basket_done"), False)
             if not basket_run_flag:
                 if st.button("🚀 Lancer le module Basket", key=_k("run_basket_btn"), type="primary"):
@@ -5581,6 +5790,7 @@ def run_app_options():
 
         with tab_digital:
             _flag_dig = st.session_state.get(_k("run_digital_done"), False)
+            _render_option_text("Digital (cash-or-nothing)", "digital_graph")
             if not _flag_dig:
                 if st.button("🚀 Lancer le pricing Digital", key=_k("run_digital_btn"), type="primary"):
                     st.session_state[_k("run_digital_done")] = True
@@ -5592,6 +5802,7 @@ def run_app_options():
 
         with tab_asset_on:
             _flag_asset = st.session_state.get(_k("run_asset_on_done"), False)
+            _render_option_text("Asset-or-nothing", "asset_on_graph")
             if not _flag_asset:
                 if st.button("🚀 Lancer le pricing Asset-or-nothing", key=_k("run_asset_on_btn"), type="primary"):
                     st.session_state[_k("run_asset_on_done")] = True
@@ -5603,6 +5814,7 @@ def run_app_options():
 
         with tab_forward_start:
             run_flag = st.session_state.get(_k("run_path_forward_done"), False)
+            _render_option_text("Forward-start (approx payoff)", "forward_start_graph")
             if not run_flag:
                 if st.button("🚀 Lancer tous les pricings Forward-start", key=_k("run_path_forward_btn"), type="primary"):
                     st.session_state[_k("run_path_forward_done")] = True
@@ -5613,6 +5825,7 @@ def run_app_options():
 
         with tab_chooser:
             _flag_chooser = st.session_state.get(_k("run_chooser_done"), False)
+            _render_option_text("Chooser option", "chooser_graph")
             if not _flag_chooser:
                 if st.button("🚀 Lancer le pricing Chooser", key=_k("run_chooser_btn"), type="primary"):
                     st.session_state[_k("run_chooser_done")] = True
