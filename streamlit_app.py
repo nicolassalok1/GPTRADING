@@ -5848,14 +5848,6 @@ Payoff plateau central avec deux pentes douces."""
                 )
 
         with tab_iron_condor:
-            _flag_ic = st.session_state.get(_k("run_iron_condor_done"), False)
-            if not _flag_ic:
-                if st.button("🚀 Lancer le pricing Iron Condor", key=_k("run_iron_condor_btn"), type="primary"):
-                    st.session_state[_k("run_iron_condor_done")] = True
-                    _flag_ic = True
-            if _flag_ic:
-                _render_structure_panel("Iron Condor")
-            else:
             _render_payoff_dropdown(
                 "Iron Condor",
                 "Crédit maximum au centre (entre strikes courts), perte plafonnée entre les ailes longues.",
@@ -5876,28 +5868,33 @@ Payoff plateau central avec deux pentes douces."""
                     K + max(abs(K2 - K), max(0.5, K * 0.05)) * 1.5,
                 ),
             )
+            _flag_ic = st.session_state.get(_k("run_iron_condor_done"), False)
+            if not _flag_ic:
+                if st.button("🚀 Lancer le pricing Iron Condor", key=_k("run_iron_condor_btn"), type="primary"):
+                    st.session_state[_k("run_iron_condor_done")] = True
+                    _flag_ic = True
+            if _flag_ic:
+                _render_structure_panel("Iron Condor")
 
         with tab_digital:
-            _flag_dig = st.session_state.get(_k("run_digital_done"), False)
             _render_option_text("Digital (cash-or-nothing)", "digital_graph")
+            _flag_dig = st.session_state.get(_k("run_digital_done"), False)
             if not _flag_dig:
                 if st.button("🚀 Lancer le pricing Digital", key=_k("run_digital_btn"), type="primary"):
                     st.session_state[_k("run_digital_done")] = True
                     _flag_dig = True
             if _flag_dig:
                 _render_structure_panel("Digital (cash-or-nothing)")
-            else:
 
         with tab_asset_on:
-            _flag_asset = st.session_state.get(_k("run_asset_on_done"), False)
             _render_option_text("Asset-or-nothing", "asset_on_graph")
+            _flag_asset = st.session_state.get(_k("run_asset_on_done"), False)
             if not _flag_asset:
                 if st.button("🚀 Lancer le pricing Asset-or-nothing", key=_k("run_asset_on_btn"), type="primary"):
                     st.session_state[_k("run_asset_on_done")] = True
                     _flag_asset = True
             if _flag_asset:
                 _render_structure_panel("Asset-or-nothing")
-            else:
 
         with tab_forward_start:
             _render_option_text("Forward-start (approx payoff)", "forward_start_graph")
@@ -5910,17 +5907,22 @@ Payoff plateau central avec deux pentes douces."""
                 _render_structure_panel("Forward-start option")
 
         with tab_chooser:
-            _flag_chooser = st.session_state.get(_k("run_chooser_done"), False)
             _render_option_text("Chooser option", "chooser_graph")
+            _flag_chooser = st.session_state.get(_k("run_chooser_done"), False)
             if not _flag_chooser:
                 if st.button("🚀 Lancer le pricing Chooser", key=_k("run_chooser_btn"), type="primary"):
                     st.session_state[_k("run_chooser_done")] = True
                     _flag_chooser = True
             if _flag_chooser:
                 _render_structure_panel("Chooser option")
-            else:
 
         with tab_straddle:
+            _render_payoff_dropdown(
+                "Straddle",
+                "Zone de gain : au-delà des strikes K±, la courbe de payoff devient positive (symétrique Call+Put).",
+                lambda s, K, K2: max(s - K, 0.0) + max(K - s, 0.0),
+                strike2_factor=1.0,
+            )
             _flag = st.session_state.get(_k("run_straddle_done"), False)
             if not _flag:
                 if st.button("🚀 Lancer le pricing Straddle", key=_k("run_straddle_btn"), type="primary"):
@@ -5928,15 +5930,13 @@ Payoff plateau central avec deux pentes douces."""
                     _flag = True
             if _flag:
                 _render_structure_panel("Straddle")
-            else:
-            _render_payoff_dropdown(
-                "Straddle",
-                "Zone de gain : au-delà des strikes K±, la courbe de payoff devient positive (symétrique Call+Put).",
-                lambda s, K, K2: max(s - K, 0.0) + max(K - s, 0.0),
-                strike2_factor=1.0,
-            )
 
         with tab_strangle:
+            _render_payoff_dropdown(
+                "Strangle",
+                "Zone de gain : en dehors des strikes éloignés (put bas, call haut), payoff devient positif.",
+                lambda s, K, K2: max(K - s, 0.0) + max(s - K2, 0.0),
+            )
             _flag = st.session_state.get(_k("run_strangle_done"), False)
             if not _flag:
                 if st.button("🚀 Lancer le pricing Strangle", key=_k("run_strangle_btn"), type="primary"):
@@ -5944,14 +5944,13 @@ Payoff plateau central avec deux pentes douces."""
                     _flag = True
             if _flag:
                 _render_structure_panel("Strangle")
-            else:
-            _render_payoff_dropdown(
-                "Strangle",
-                "Zone de gain : en dehors des strikes éloignés (put bas, call haut), payoff devient positif.",
-                lambda s, K, K2: max(K - s, 0.0) + max(s - K2, 0.0),
-            )
 
         with tab_call_spread:
+            _render_payoff_dropdown(
+                "Call spread",
+                "Zone de gain : entre K (long call) et K2 (short call), payoff positif plafonné après K2.",
+                lambda s, K, K2: max(s - K, 0.0) - max(s - K2, 0.0),
+            )
             _flag = st.session_state.get(_k("run_call_spread_done"), False)
             if not _flag:
                 if st.button("🚀 Lancer le pricing Call spread", key=_k("run_call_spread_btn"), type="primary"):
@@ -5959,22 +5958,8 @@ Payoff plateau central avec deux pentes douces."""
                     _flag = True
             if _flag:
                 _render_structure_panel("Call spread")
-            else:
-            _render_payoff_dropdown(
-                "Call spread",
-                "Zone de gain : entre K (long call) et K2 (short call), payoff positif plafonné après K2.",
-                lambda s, K, K2: max(s - K, 0.0) - max(s - K2, 0.0),
-            )
 
         with tab_put_spread:
-            _flag = st.session_state.get(_k("run_put_spread_done"), False)
-            if not _flag:
-                if st.button("🚀 Lancer le pricing Put spread", key=_k("run_put_spread_btn"), type="primary"):
-                    st.session_state[_k("run_put_spread_done")] = True
-                    _flag = True
-            if _flag:
-                _render_structure_panel("Put spread")
-            else:
             _render_payoff_dropdown(
                 "Put spread",
                 "Zone de gain : entre Kbas (put short) et Khaut (put long). Payoff plafonné au-dessus de Khaut.",
@@ -5983,8 +5968,20 @@ Payoff plateau central avec deux pentes douces."""
                 ),
                 strike2_factor=0.95,
             )
+            _flag = st.session_state.get(_k("run_put_spread_done"), False)
+            if not _flag:
+                if st.button("🚀 Lancer le pricing Put spread", key=_k("run_put_spread_btn"), type="primary"):
+                    st.session_state[_k("run_put_spread_done")] = True
+                    _flag = True
+            if _flag:
+                _render_structure_panel("Put spread")
 
         with tab_butterfly:
+            _render_payoff_dropdown(
+                "Butterfly",
+                "Zone de gain : centrée autour de K2 (strikes courts), payoff en forme de tente, perte en dehors.",
+                lambda s, K, K2: max(s - K, 0.0) - 2 * max(s - K2, 0.0) + max(s - (K2 + (K2 - K)), 0.0),
+            )
             _flag = st.session_state.get(_k("run_butterfly_done"), False)
             if not _flag:
                 if st.button("🚀 Lancer le pricing Butterfly", key=_k("run_butterfly_btn"), type="primary"):
@@ -5992,22 +5989,8 @@ Payoff plateau central avec deux pentes douces."""
                     _flag = True
             if _flag:
                 _render_structure_panel("Butterfly")
-            else:
-            _render_payoff_dropdown(
-                "Butterfly",
-                "Zone de gain : centrée autour de K2 (strikes courts), payoff en forme de tente, perte en dehors.",
-                lambda s, K, K2: max(s - K, 0.0) - 2 * max(s - K2, 0.0) + max(s - (K2 + (K2 - K)), 0.0),
-            )
 
         with tab_condor:
-            _flag = st.session_state.get(_k("run_condor_done"), False)
-            if not _flag:
-                if st.button("🚀 Lancer le pricing Condor", key=_k("run_condor_btn"), type="primary"):
-                    st.session_state[_k("run_condor_done")] = True
-                    _flag = True
-            if _flag:
-                _render_structure_panel("Condor")
-            else:
             _render_payoff_dropdown(
                 "Condor",
                 "Zone de gain : plateau central entre strikes courts, pertes en dehors des ailes.",
@@ -6018,16 +6001,15 @@ Payoff plateau central avec deux pentes douces."""
                     + max(s - (K2 + (K - K * 0.97)), 0.0)
                 ),
             )
+            _flag = st.session_state.get(_k("run_condor_done"), False)
+            if not _flag:
+                if st.button("🚀 Lancer le pricing Condor", key=_k("run_condor_btn"), type="primary"):
+                    st.session_state[_k("run_condor_done")] = True
+                    _flag = True
+            if _flag:
+                _render_structure_panel("Condor")
 
         with tab_iron_bfly:
-            _flag_ib = st.session_state.get(_k("run_iron_bfly_done"), False)
-            if not _flag_ib:
-                if st.button("🚀 Lancer le pricing Iron Butterfly", key=_k("run_iron_bfly_btn"), type="primary"):
-                    st.session_state[_k("run_iron_bfly_done")] = True
-                    _flag_ib = True
-            if _flag_ib:
-                _render_structure_panel("Iron Butterfly")
-            else:
             _render_payoff_dropdown(
                 "Iron Butterfly",
                 "Straddle vendu au centre, ailes longues protègent en dehors. Payoff en tente inversée (crédit maximal autour de K).",
@@ -6043,39 +6025,43 @@ Payoff plateau central avec deux pentes douces."""
                     K + max(abs(K2 - K), max(0.5, K * 0.05)),
                 ],
             )
+            _flag_ib = st.session_state.get(_k("run_iron_bfly_done"), False)
+            if not _flag_ib:
+                if st.button("🚀 Lancer le pricing Iron Butterfly", key=_k("run_iron_bfly_btn"), type="primary"):
+                    st.session_state[_k("run_iron_bfly_done")] = True
+                    _flag_ib = True
+            if _flag_ib:
+                _render_structure_panel("Iron Butterfly")
 
         with tab_calendar:
-            _flag_cal = st.session_state.get(_k("run_calendar_done"), False)
             _render_option_text("Calendar spread", "calendar_graph")
+            _flag_cal = st.session_state.get(_k("run_calendar_done"), False)
             if not _flag_cal:
                 if st.button("🚀 Lancer le pricing Calendar spread", key=_k("run_calendar_btn"), type="primary"):
                     st.session_state[_k("run_calendar_done")] = True
                     _flag_cal = True
             if _flag_cal:
                 _render_structure_panel("Calendar spread")
-            else:
 
         with tab_diagonal:
-            _flag_diag = st.session_state.get(_k("run_diagonal_done"), False)
             _render_option_text("Diagonal spread", "diagonal_graph")
+            _flag_diag = st.session_state.get(_k("run_diagonal_done"), False)
             if not _flag_diag:
                 if st.button("🚀 Lancer le pricing Diagonal spread", key=_k("run_diagonal_btn"), type="primary"):
                     st.session_state[_k("run_diagonal_done")] = True
                     _flag_diag = True
             if _flag_diag:
                 _render_structure_panel("Diagonal spread")
-            else:
 
         with tab_binary_barrier:
-            barrier_run_flag_local = st.session_state.get(_k("run_binary_barrier_done"), False)
             _render_option_text("Binary barrière (digital)", "binary_barrier_graph")
+            barrier_run_flag_local = st.session_state.get(_k("run_binary_barrier_done"), False)
             if not barrier_run_flag_local:
                 if st.button("🚀 Lancer le pricing Binary barrière", key=_k("run_binary_barrier_btn"), type="primary"):
                     st.session_state[_k("run_binary_barrier_done")] = True
                     barrier_run_flag_local = True
             if barrier_run_flag_local:
                 _render_structure_panel("Binary barrier (digital)")
-            else:
 
         with tab_asian_geo:
             _render_option_text("Asian géométrique (payoff terminal)", "asian_geo_graph")
@@ -6108,26 +6094,24 @@ Payoff plateau central avec deux pentes douces."""
                 _render_structure_panel("Cliquet / Ratchet (MC)")
 
         with tab_quanto:
-            _flag_quanto = st.session_state.get(_k("run_quanto_done"), False)
             _render_option_text("Quanto option", "quanto_graph")
+            _flag_quanto = st.session_state.get(_k("run_quanto_done"), False)
             if not _flag_quanto:
                 if st.button("🚀 Lancer le pricing Quanto", key=_k("run_quanto_btn"), type="primary"):
                     st.session_state[_k("run_quanto_done")] = True
                     _flag_quanto = True
             if _flag_quanto:
                 _render_structure_panel("Quanto option")
-            else:
 
         with tab_rainbow:
-            _flag_rainbow = st.session_state.get(_k("run_rainbow_done"), False)
             _render_option_text("Rainbow option", "rainbow_graph")
+            _flag_rainbow = st.session_state.get(_k("run_rainbow_done"), False)
             if not _flag_rainbow:
                 if st.button("🚀 Lancer le pricing Rainbow", key=_k("run_rainbow_btn"), type="primary"):
                     st.session_state[_k("run_rainbow_done")] = True
                     _flag_rainbow = True
             if _flag_rainbow:
                 _render_structure_panel("Rainbow option")
-            else:
 
     tab_call, tab_put = st.tabs(["Call", "Put"])
     for _label, _tab in (("Call", tab_call), ("Put", tab_put)):
