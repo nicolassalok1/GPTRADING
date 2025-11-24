@@ -3505,276 +3505,276 @@ def run_app_options():
         def _graph_desc(key_suffix: str) -> str:
             """Retourne une description textuelle (10 lignes) du payoff/produit."""
             desc_map = {
-                "american_payoff": """Exercice possible à tout moment jusqu'à T.
-Payoff terminal vanilla (call/put).
-Valeur au moins égale à l’européenne.
-Sensibilité dividendes (call) et taux (put).
-Early exercise pertinent pour put ITM.
-Delta plus élevé près du strike.
-Gamma plus accentué pour puts ITM.
-Theta peut devenir positif (put ITM).
-Vega dépend du temps restant.
-Profil final: payoff vanilla au strike K.""",
-                "bermuda_payoff": """Exercice autorisé sur dates discrètes.
-Entre européenne (1 date) et américaine (continu).
-Payoff final vanilla si non exercée avant.
-Calendrier d’exercice fixe sur [0, T].
-Valeur augmente avec plus de dates.
-Sensibilité à la fréquence des Bermudes.
-Delta/Theta intermédiaires Am/Eu.
-Vega similaire à l’européenne.
-Taux/dividendes orientent l’exercice.
-Profil final: payoff vanilla au strike K.""",
-                "asian_graph": """Payoff basé sur moyenne arithmétique.
-Réduit l’impact des pics de volatilité.
-Généralement moins cher qu’européenne.
-Sensible au nombre d’observations.
-Variance du payoff plus faible.
-Delta lissé vs vanilla.
-Vega plus faible (moyennage).
-Theta dépend du calendrier de fixings.
-Payoff final reste call/put sur moyenne.
-Graphique: référence vanilla sur S_T.""",
-                "asian_geo_graph": """Payoff basé sur moyenne géométrique.
-Toujours ≤ moyenne arithmétique.
-Formule fermée fréquente.
-Moins sensible aux extrêmes de prix.
-Vega plus faible que l’Asian arith.
-Delta lissé, moins de convexité.
-Utilisable en variable de contrôle MC.
-Sensible au nombre d’observations.
-Payoff final vanilla sur moyenne geom.
-Graphique: référence vanilla sur S_T.""",
-                "lookback_graph": """Strike flottant basé sur extrême du spot.
-Payoff dépend du max/min atteint.
-Protège contre mauvais timing.
-Convexité élevée (path-dependent).
-Vega/Theta diffèrent d’une vanilla.
-Sensibilité à la maturité (plus d’extrêmes).
-Delta lié au rang spot/extrême.
-Valorisation MC ou formules fermées.
-Payoff final compare S_T à l’extrême.
-Graphique: vanilla indicative sur S_T.""",
-                "lookback_fixed_graph": """Strike fixé dès l’origine.
-Payoff compare S_T au max/min historique.
-Récompense trajectoire favorable.
-Path-dependent mais strike constant.
-Vega impactée par incertitude max/min.
-Delta lié à distance spot/extrême.
-Theta influencé par découverte d’extrêmes.
-MC ou formules semi-fermées possibles.
-Payoff final type call/put.
-Graphique: vanilla indicative sur S_T.""",
-                "forward_start_graph": """Strike défini à T_start (k×S).
-Fixe le strike plus tard pour réduire timing risk.
-Payoff final vanilla sur S_T avec strike futur.
-Sensibilité à la vol avant et après T_start.
-Vega séparée pré/post définition strike.
-Theta dépend du délai jusqu’à T_start.
-Utilisé pour options sur émissions futures.
-Delta faible avant T_start, augmente après.
-Prix lié au ratio k et au temps restant.
-Graphique: vanilla indicative sur S_T.""",
-                "cliquet_graph": """Payoff cumule des coupons périodiques.
-Chaque période capée/floorée.
-Réinitialisation du strike/coupon.
-Sensible à la vol moyenne multi-périodes.
-Path-dependent sur rendements sériels.
-Vega répartie sur toutes les périodes.
-Theta proche d’un produit de portage.
-Delta dépend cap/floor et spot courant.
-Souvent valorisé en MC.
-Graphique: vanilla indicative sur S_T final.""",
-                "calendar_graph": """Deux maturités, même strike.
-Long échéance longue, short échéance courte.
-Parie sur vol/passage du temps.
-Theta positif initialement (short proche).
-Vega généralement positive (jambe longue).
-Sensibilité au skew/term structure de vol.
-Payoff non linéaire autour du strike.
-Gamma concentré à l’échéance courte.
-Peut se déboucler après la jambe courte.
-Graphique: vanilla indicative sur S_T.""",
-                "diagonal_graph": """Strikes et maturités différents.
-Combine vertical et calendrier.
-Ajuste directionnel + exposition vol.
-Theta dépend des deux échéances.
-Vega mixte (long/short diff vol).
-Cible un niveau de spot spécifique.
-Sensibilité à la pente de vol implicite.
-Profil asymétrique selon strikes.
-Gestion active après expiration courte.
-Graphique: vanilla indicative sur S_T.""",
-                "digital_graph": """Paiement fixe si condition vraie.
-Call: 1 si S_T > K, sinon 0.
-Put: 1 si S_T < K, sinon 0.
-Sensible à la vol (vega pic autour de K).
-Theta important proche du strike.
-Gamma concentré autour de K.
-Parie sur franchissement, pas amplitude.
-Building block en structurés.
-Payout multiplicatif possible.
-Graphique: step function (référence vanilla).""",
-                "asset_on_graph": """Verse l’actif ou rien.
-Call: paie S_T si S_T > K.
-Put: paie S_T si S_T < K.
-Sensible spot et volatilité.
-Theta accentué près du strike.
-Vega concentrée autour de K.
-Couverture discrète possible.
-Diffère du digital cash par payout.
-Path-indépendant (terminal).
-Graphique: vanilla indicative sur S_T.""",
-                "chooser_graph": """Choix call/put à t_choice.
-Flexibilité intégrée dans la prime.
-Avant t_choice, payoff combiné implicite.
-Sensibilité au timing et à la vol.
-Delta/Vega mixtes avant le choix.
-Après t_choice, devient vanilla choisie.
-Prix ≥ max(call, put) pondéré.
-Couvre incertitude directionnelle.
-Peut modéliser choix investisseur.
-Graphique: vanilla indicative sur S_T final.""",
-                "quanto_graph": """Sous-jacent étranger, payoff en devise locale.
-FX neutralisé (taux de change fixé).
-Supprime le risque de change.
-Sensibilité à corrélation actif/FX si ajustée.
-Vega sur l’actif uniquement.
-Theta vanilla sur l’actif.
-Delta sur l’actif, pas sur FX.
-Utilisé en cross-currency.
-Peut inclure ajustement de drift.
-Graphique: vanilla indicative en devise locale.""",
-                "rainbow_graph": """Option multi-actifs sur max ou min.
-Call sur max: profite du meilleur actif.
-Put sur min: protège le pire actif.
-Forte dépendance corrélation.
-Vega répartie entre actifs.
-Delta/Theta selon leader/trailer.
-Payoff non additif, choisit un extrême.
-Vue relative entre actifs.
-Peut utiliser des weights asymétriques.
-Graphique: vanilla indicative sur actif de ref.""",
-                "barrier_graph": """Option barrière : payoff vanilla modifié par franchissement (up/down, in/out).
-Knock-in : l’option s’active si la barrière est touchée.
-Knock-out : l’option s’éteint si la barrière est touchée.
-Sensibilité au chemin et à la volatilité.
-Plus la barrière est proche, plus la prime est réduite (out) ou augmentée (in).
-Paramètres clés : niveau, direction, knock, style (call/put).
-Risque de gap : déclenchement instantané possible.
-Payoff final sinon vanilla si condition (non) atteinte.
-Utilisée pour prix réduits ou vues sur un range.
-Gestion fine du niveau critique pour calibrer le risque/prix.""",
-                "binary_barrier_graph": """Barrière digitale : paie un montant fixe selon barrière + position finale.
-Combine logique barrière (up/down, in/out) et payoff binaire.
-Sensibilité au chemin et à la vol, gamma concentré autour de la barrière/strike.
-Knock-out : paiement nul si barrière touchée (ou inverse pour knock-in).
-Payout fixe simplifie mais accentue le risque de saut.
-Paramètres : barrière, direction, knock, payout, éventuel strike.
-Souvent utilisée en structurés à rendement élevé.
-Probabilité de survie/activation cruciale dans la prime.
-Risque de discontinuité si le niveau est touché.
-Profil final en step function conditionnée au scénario de barrière.""",
-                "basket_graph": """Payoff sur combinaison pondérée d’actifs.
-Peut être moyenne, max ou min.
-Corrélation influe fortement le prix.
-Diversification réduit la variance.
-Vega dépend vols individuelles et corrélation.
-Theta lié au carry de chaque actif.
-Delta réparti selon pondérations.
-Utilisé pour couvrir/exprimer une vue panier.
-Path-indépendant si payoff terminal.
-Graphique: vanilla indicative sur panier vs S_T.""",
-                "european_graph": """Option européenne exerçable uniquement à l’échéance.
-Payoff terminal vanilla (call/put) au strike K.
-Sensibilité aux paramètres S0, K, T, r, q, σ.
-Pas d’exercice anticipé : pas d’effet de dividende sur call.
-Base de comparaison pour d’autres styles d’options.
-Delta/Gamma/Theta/Vega classiques du modèle BSM.
-Surface de prix fonction de S et K autour des valeurs communes.
-Risque limité à la prime pour un acheteur.
-Payout linéaire au-dessus ou en dessous de K selon call/put.
-Référence pour calibrer et comparer d’autres modèles.""",
-                "straddle_graph": """Straddle = call + put au même strike K.
-Profil symétrique : gagne sur gros mouvements haussiers/baisse.
-P&L négatif autour de K à cause du double paiement de prime.
-Delta quasi nul au centre, gamma élevé proche de K.
-Vega positif : profite d’une hausse de volatilité.
-Theta négatif important (deux primes).
-Convient pour parier sur un mouvement sans direction.
-Risque limité à la somme des primes.
-Break-even à K ± primes cumulées.
-Payoff en V double (somme des deux vanillas).""",
-                "strangle_graph": """Strangle = put OTM + call OTM.
-Plus cheap qu’un straddle (strikes décalés).
-Profil gagne sur mouvements importants hors de [K_put, K_call].
-Delta proche de zéro au centre, gamma moins concentré.
-Vega positif, theta négatif mais moindre qu’un straddle.
-Risque limité aux primes, gain illimité sur extrêmes.
-Utilisé pour parier sur volatilité avec coût réduit.
-Break-even éloignés : K_put – primes, K_call + primes.
-Sensibilité aux shifts de vol implicite sur deux ailes.
-Payoff en V large (put bas, call haut).""",
-                "call_spread_graph": """Bull call spread : long call K1, short call K2>K1.
-Coût réduit par la jambe short, gain plafonné.
-Delta positif, gamma modéré; vega réduit vs call nu.
-Theta peut être moins négatif selon distance des strikes.
-Risque limité à la prime nette.
-Max profit = (K2-K1) - prime nette.
-Max perte = prime nette payée.
-Profil directionnel haussier avec cap de gain.
-Sensibilité au skew entre strikes.
-Payoff en rampe puis plateau après K2.""",
-                "put_spread_graph": """Bear put spread : long put K1, short put K2<K1.
-Coût réduit par put short, gain plafonné.
-Delta négatif, gamma modéré; vega réduit vs put nu.
-Theta peut être moins négatif.
-Max profit = (K1-K2) - prime nette.
-Max perte = prime nette payée.
-Directionnel baissier avec cap de gain.
-Sensibilité au skew put.
-Risque limité à la prime nette.
-Payoff en rampe inverse puis plateau sous K2.""",
-                "butterfly_graph": """Butterfly call classique : long ailes, short 2 calls au centre.
-Profil quasi plat, pic de gain autour du strike central.
-Delta ~0 au centre, gamma élevé près du centre.
-Vega négatif (short vol), theta positif autour de K.
-Coût faible, risque limité à la prime.
-Gain max limité au centre si S≈K_mid.
-Perte max = prime nette si S très éloigné.
-Pari sur faible volatilité / range trading.
-Payoff en tente autour du strike central.
-Sensibilité au timing d’expiration des jambes short.""",
-                "condor_graph": """Condor : 4 calls échelonnés (ou puts).
-Profil plus plat qu’une butterfly, plateau de gain plus large.
-Delta ~0 au centre, gamma plus doux.
-Vega négatif, theta souvent positif si crédit.
-Gain limité entre strikes courts, perte limitée aux extrêmes.
-Crédit/débit selon construction.
-Pari sur range plus large qu’une butterfly.
-Sensibilité au skew entre strikes extrêmes et intermédiaires.
-Risque borné par l’écart ailes/extérieures.
-Payoff plateau central avec deux pentes douces.""",
-                "iron_condor_graph": """Iron condor = put spread + call spread (souvent en crédit).
-Plateau de gain central entre les strikes courts.
-Gain max = crédit net si le spot reste dans le corridor.
-Perte limitée en dehors, bornée par la largeur des ailes longues.
-Delta proche de 0 autour du centre; gamma modéré.
-Vega négatif (short vol), theta souvent positif au départ.
-Sensible au skew entre les ailes courtes et longues.
-Ajustable en rapprochant/éloignant les ailes selon le range visé.
-Peut se déboucler avant échéance si la vol se comprime.
-Payoff en plateau central avec pentes symétriques sur les ailes.""",
-                "iron_butterfly_graph": """Iron butterfly = straddle vendu protégé par des ailes longues.
-Crédit maximum au strike central K.
-Perte limitée par les ailes achetées de part et d’autre.
-Delta proche de 0 au centre, gamma élevé près de K.
-Vega négatif, theta positif autour du strike central.
-Adapté à une vue de range étroit et de vol en baisse.
-Risque borné par la largeur des ailes.
-Break-even à K ± (largeur des ailes - crédit net).
-Ajustable en modifiant la distance des ailes.
-Payoff en tente inversée centrée sur K.""",
+                "american_payoff": """Une option américaine peut être exercée à tout moment entre l’émission et l’échéance.
+Le payoff terminal reste celui d’un call ou d’un put vanilla, mais l’acheteur peut l’activer plus tôt.
+Sa valeur est toujours au moins égale à celle d’une européenne, car l’option d’exercice supplémentaire a un prix.
+Un call américain sur un sous-jacent sans dividende ne s’exerce généralement pas avant T, mais un put peut être anticipé.
+Le dividende pousse parfois à lever un call juste avant le détachement, et le taux rend l’exercice du put attractif.
+La sensibilité au spot (delta) est souvent plus élevée près du strike, surtout pour les puts ITM.
+La convexité (gamma) se concentre autour du strike et peut être accentuée par l’option d’exercice.
+Le theta peut devenir moins négatif, voire positif pour certains puts ITM proches de l’échéance.
+La volatilité implicite joue sur la valeur de l’option de flexibilité d’exercice, donc sur la prime.
+Le profil final est celui d’un payoff vanilla au strike K, mais la décision d’exercice modifie la valeur actuelle.""",
+                "bermuda_payoff": """Une option bermudéenne n’est exerçable que sur un ensemble de dates discrètes prédéfinies.
+Elle se situe entre une européenne (exercice à T) et une américaine (exercice continu), offrant une flexibilité intermédiaire.
+Si aucune date d’exercice anticipé n’est utilisée, le payoff terminal reste celui d’une vanilla au strike K.
+Plus il y a de dates d’exercice, plus la valeur se rapproche de l’américaine, car la flexibilité augmente.
+Le calendrier des dates influence le choix optimal d’exercice et donc le prix.
+Le delta et le theta se situent entre ceux d’une européenne et d’une américaine.
+La vega est proche de celle d’une européenne, mais l’impact de la vol sur l’exercice reste présent.
+Les dividendes et le niveau des taux guident la décision d’exercer, surtout pour les puts.
+Le produit convient aux investisseurs voulant un compromis entre flexibilité et coût.
+Le payoff final reste celui d’un call ou d’un put vanilla si l’option n’est pas exercée avant l’échéance.""",
+                "asian_graph": """Une option asiatique arithmétique paie sur la moyenne des prix observés, plutôt que sur le spot final.
+Ce moyennage réduit l’impact des pics de volatilité et rend souvent l’option moins chère qu’une européenne.
+Le nombre d’observations et leur calendrier déterminent la sensibilité au chemin et le niveau de prime.
+Le delta est plus lissé qu’une vanilla, car chaque observation influence partiellement le payoff.
+Le gamma est plus modéré et la vega généralement plus faible, car l’effet de la vol est dilué dans la moyenne.
+Le theta dépend de la cadence des fixings et de la portion déjà observée.
+Le payoff final reste de type call ou put, mais sur la moyenne plutôt que sur le spot terminal.
+Les options asiatiques sont prisées pour couvrir un prix moyen d’achat ou de vente d’une marchandise.
+Elles limitent le risque de mauvais timing tout en conservant une protection ou un levier.
+Le graphe de payoff s’apparente à une vanilla mais décalée par l’effet de la moyenne.""",
+                "asian_geo_graph": """Une option asiatique géométrique paie sur la moyenne géométrique des prix observés.
+Cette moyenne est toujours inférieure ou égale à la moyenne arithmétique, ce qui rend la prime plus basse.
+Une formule fermée existe souvent, ce qui facilite le calcul et la couverture.
+Le produit est moins sensible aux extrêmes de prix que l’asiatique arithmétique.
+Le delta reste lissé et le gamma modéré, car chaque observation pèse de manière multiplicative.
+La vega est plus faible que pour l’asiatique arithmétique, l’effet de la vol étant atténué.
+Le theta dépend du nombre d’observations et de la partie déjà réalisée.
+La géométrique sert fréquemment de contrôle de variance pour des simulations Monte Carlo.
+Le payoff final est de type call ou put sur cette moyenne géométrique.
+Le graphe de payoff suit une forme vanilla, décalée par la moyenne géométrique plutôt que par le spot final.""",
+                "lookback_graph": """Une lookback floating détermine son strike a posteriori en prenant l’extrême du spot pendant la vie de l’option.
+Pour un call, le strike peut être le minimum observé ; pour un put, le maximum, ce qui protège contre un mauvais timing.
+Le payoff final compare le spot terminal à cet extrême, offrant une convexité forte et une protection renforcée.
+Le produit est fortement path-dependent, car chaque observation peut modifier l’extrême retenu.
+Le delta dépend de la distance entre le spot et l’extrême ; il peut réagir vivement lors de nouveaux extrêmes.
+La vega et le theta diffèrent d’une vanilla car le temps supplémentaire augmente la probabilité d’atteindre des extrêmes.
+La maturité accroît la chance d’observer un nouveau max ou min, ce qui influence le prix.
+La valorisation se fait souvent par Monte Carlo ou par formules fermées spécialisées.
+Le risque de gap est important, car un saut peut fixer un extrême décisif.
+Le payoff final reste comparable à une vanilla mais avec un strike déterminé par le parcours du sous-jacent.""",
+                "lookback_fixed_graph": """Une lookback fixed fixe son strike dès l’origine, mais son payoff dépend du max ou du min atteint pendant la vie.
+Le spot final est comparé à l’extrême historique, ce qui récompense une trajectoire favorable.
+Le produit reste path-dependent, même si le strike ne bouge pas après l’émission.
+Le delta reflète la distance entre le spot et l’extrême atteint, et peut évoluer brusquement lors d’un nouveau record.
+La vega intègre l’incertitude sur l’atteinte de nouveaux extrêmes, ce qui rend le prix sensible à la vol.
+Le theta dépend de la probabilité d’étendre l’extrême pendant le temps restant.
+Les méthodes de valorisation vont des approches semi-fermées aux Monte Carlo selon les hypothèses.
+Le payoff final ressemble à un call ou put, mais il intègre la meilleure ou la pire performance passée.
+Le produit convient pour capturer une amélioration de prix sans renoncer au strike initial.
+Le graphe de payoff indique une vanilla évaluée avec l’information d’un extrême déjà observé ou attendu.""",
+                "forward_start_graph": """Une forward-start choisit son strike à une date future T_start, souvent comme k fois le spot observé ce jour-là.
+Avant T_start, l’option reste en attente et vaut une promesse d’option avec strike inconnu.
+Après T_start, elle devient une vanilla classique, mais le strike est déjà lié au marché de cette date.
+Le produit réduit le risque de mauvais timing sur le strike, utile pour des émissions ou des primes différées.
+Le delta est faible avant T_start, car le strike n’est pas encore fixé, puis il augmente après la fixation.
+La vega est répartie entre la période avant et après T_start, avec une sensibilité distincte à la vol.
+Le theta dépend du délai restant jusqu’à la fixation du strike, puis de la maturité résiduelle.
+Le prix dépend du ratio k et de la distribution anticipée du spot à T_start.
+La couverture nécessite de suivre le spot pré-fixation pour ajuster l’exposition.
+Le payoff final est un call ou un put vanilla évalué avec un strike défini plus tard, mais payé à l’échéance finale.""",
+                "cliquet_graph": """Une option cliquet cumule des coupons périodiques capés et floorés, souvent avec réinitialisation du strike.
+Chaque période mesure un rendement qui est limité par un cap et un floor, puis ajouté au coupon cumulé.
+Le produit est fortement path-dependent, car la séquence de rendements successifs détermine le total payé.
+La vega et la theta sont réparties sur toutes les périodes, plutôt que concentrées sur une seule échéance.
+Le delta évolue à chaque période selon la distance au cap et au floor et le niveau de spot.
+La valorisation se fait souvent par Monte Carlo, car les dépendances entre périodes sont complexes.
+Le produit est utilisé pour distribuer un rendement régulier avec des limites de performance.
+Les caps/floors protègent contre des chocs excessifs tout en offrant une participation à la hausse ou à la baisse.
+Le risque de gap est atténué par les plafonds, mais la corrélation des rendements successifs reste importante.
+Le payoff final correspond à la somme des coupons ajustés, payés à l’échéance ou à chaque période selon la structure.""",
+                "calendar_graph": """Un calendar spread combine une option courte à maturité proche et une option longue à maturité plus lointaine, au même strike.
+Le pari principal est que la valeur temps de la jambe longue dépasse celle de la jambe courte pendant la vie du trade.
+Le theta est souvent positif au départ, car on encaisse la prime de l’échéance courte plus vite.
+La vega est généralement positive, car la jambe longue réagit plus à une hausse de volatilité.
+Le payoff est non linéaire autour du strike et dépend du comportement après l’expiration de la jambe courte.
+Le gamma est concentré près de l’échéance proche, mais l’option longue conserve de la convexité au-delà.
+Le spread peut être débouclé ou roulé après la première échéance, selon le mouvement du spot et de la vol.
+Le produit est sensible au skew et à la term structure de volatilité entre les deux maturités.
+Le risque est borné par les primes nettes, mais un mouvement rapide peut coûter la jambe courte.
+Le payoff final reflète la valeur résiduelle de la jambe longue moins la jambe courte arrivée à échéance.""",
+                "diagonal_graph": """Un diagonal spread mélange une différence de maturité et de strike entre les deux jambes.
+Il combine les idées d’un vertical spread (strikes différents) et d’un calendar spread (maturités différentes).
+La position permet d’ajuster une vue directionnelle tout en jouant sur la volatilité et le passage du temps.
+Le theta dépend des deux échéances : la jambe courte s’érode plus vite, la jambe longue porte plus de valeur temps.
+La vega est mixte, car les deux maturités réagissent différemment à un choc de volatilité.
+Le profil peut viser une zone de spot spécifique où le spread délivre sa valeur maximale.
+Le skew entre strikes et la term structure entre maturités influencent directement le prix.
+La gestion active est souvent nécessaire après expiration de la jambe courte ou en cas de mouvement fort.
+Le risque est borné par la combinaison de primes, mais le profil reste asymétrique.
+Le payoff final est un différentiel de deux vanillas de strikes et de maturités distincts.""",
+                "digital_graph": """Une option digitale cash-or-nothing paie un montant fixe si la condition sur le spot est satisfaite à l’échéance.
+Pour un call, le paiement est déclenché si S_T dépasse K ; pour un put, s’il passe en dessous.
+Le payoff ressemble à un saut de niveau, sans dépendre de l’ampleur du mouvement au-delà du strike.
+La vega est concentrée autour du strike, car la probabilité de franchissement dépend fortement de la volatilité.
+Le theta peut être abrupt près de l’échéance, la probabilité de franchissement évoluant vite.
+Le gamma est également pic autour de K, car une petite variation de spot change la probabilité de paiement.
+Le produit sert souvent de brique de base pour des structurés à coupon élevé.
+Le risque de gap est important, car un saut peut déclencher ou annuler le paiement d’un coup.
+La couverture nécessite de gérer une exposition sensible au spot autour du strike.
+Le payoff final est binaire : soit le montant fixe est versé, soit rien n’est payé.""",
+                "asset_on_graph": """Une option asset-or-nothing verse le sous-jacent lui-même (ou rien) si la condition est remplie.
+Pour un call, l’actif est livré si S_T dépasse K ; pour un put, si S_T passe en dessous.
+Le payoff est proportionnel au spot dans le scénario favorable, sinon nul, ce qui combine linéarité et condition binaire.
+La sensibilité au spot reste forte, car le paiement dépend directement du niveau final de l’actif.
+Le gamma et la vega sont concentrés autour du strike, mais l’ampleur du paiement varie avec S_T.
+Le theta se comporte différemment d’une digitale cash car le montant dépend du spot final.
+Le produit peut être couvert via des combinaisons de vanillas et de positions sur le sous-jacent.
+Le risque de gap crée une discontinuité de valeur s’il survient près du strike.
+La valorisation reste proche d’une digitale, mais avec un paiement multiplicatif par S_T.
+Le payoff final est soit la remise de l’actif, soit zéro, selon la condition sur le spot.""",
+                "chooser_graph": """Une option chooser offre à son détenteur le droit de choisir, à une date t_choice, entre un call et un put.
+Avant t_choice, la prime reflète cette flexibilité supplémentaire, supérieure à celle d’une simple vanilla.
+Après t_choice, le contrat se transforme en l’option choisie, avec le strike et la maturité restants.
+Le produit couvre une incertitude directionnelle jusqu’à une date clé, tout en gardant une protection.
+Le delta et la vega sont mixtes avant t_choice, car le profil intègre les deux scénarios potentiels.
+Le theta dépend du temps restant avant la décision, puis du temps restant après la conversion.
+La valorisation s’appuie souvent sur une combinaison analytique de call et de put avec un facteur de décision.
+Le risque de gap avant t_choice peut influencer la préférence pour le call ou le put.
+Le produit convient quand l’investisseur veut reporter un choix directionnel tout en verrouillant un coût.
+Le payoff final est celui du call ou du put choisi, exercé à l’échéance finale selon le type sélectionné.""",
+                "quanto_graph": """Une option quanto paie sur un sous-jacent étranger mais règle dans une autre devise à un taux de change fixé.
+Le produit neutralise le risque de change tout en conservant l’exposition au sous-jacent de départ.
+Le payoff reste celui d’un call ou d’un put vanilla, mais converti à un taux garanti ou ajusté.
+La corrélation entre l’actif et le FX peut être prise en compte dans le drift effectif.
+Le delta s’exprime sur le sous-jacent étranger, tandis que l’exposition FX est neutralisée.
+La vega porte sur la volatilité de l’actif, l’effet de la vol FX étant limité par la construction.
+Le theta reflète la valeur temps dans la devise de règlement, avec le taux de change figé.
+La couverture se fait via le sous-jacent étranger et éventuellement des dérivés FX pour ajuster le drift.
+Le produit est recherché quand l’investisseur veut éviter le risque de conversion tout en gardant la vue sur l’actif.
+Le payoff final est une vanilla en devise locale, calculée sur la performance de l’actif étranger.""",
+                "rainbow_graph": """Une option rainbow multi-actifs paie sur l’extrême d’un panier, le plus souvent le max ou le min.
+Un call sur le max profite du meilleur performeur ; un put sur le min protège contre le pire actif.
+La corrélation entre actifs est déterminante : faible corrélation augmente l’attrait du call sur max et du put sur min.
+La vega est répartie entre les actifs, chaque volatilité contribuant à la probabilité d’être l’extrême.
+Le delta se déplace vers l’actif le plus susceptible de finir max ou min, évoluant avec le marché.
+Le produit ne somme pas les actifs : il choisit un extrême, ce qui rend le payoff non additif.
+Les poids peuvent être asymétriques pour refléter des préférences sur certains actifs.
+La couverture nécessite de suivre plusieurs sous-jacents et leur corrélation.
+Le risque est lié aux sauts d’un actif qui peut soudain devenir l’extrême.
+Le payoff final correspond à la valeur de l’actif extrême, comparée au strike pour un call ou un put.""",
+                "barrier_graph": """Une option barrière adapte un payoff vanilla en le conditionnant à un niveau franchi ou non.
+Une barrière knock-in active l’option si elle est touchée, tandis qu’une knock-out l’éteint.
+La direction (up ou down) et le type (call ou put) définissent la zone de surveillance.
+Plus la barrière est proche, plus la prime baisse pour une knock-out ou augmente pour une knock-in.
+Le produit est path-dependent : la chronologie des niveaux atteints compte, pas seulement le final.
+La vega et le theta sont influencés par la proximité de la barrière et par le temps restant.
+Le risque de gap est crucial, car un saut peut déclencher ou annuler l’option instantanément.
+Les paramètres clés sont le niveau de barrière, son sens, la nature in/out et le style call/put.
+Le payoff final est celui d’une vanilla si la condition de barrière est respectée, sinon il est nul ou s’active.
+Le produit est prisé pour réduire le coût ou pour cibler un scénario de range précis.""",
+                "binary_barrier_graph": """Une barrière digitale paie un montant fixe selon le franchissement d’un niveau et la position finale du spot.
+Elle combine la logique d’une barrière (up/down, in/out) et d’un payoff binaire.
+La probabilité de paiement dépend du chemin et de la vol, avec un gamma concentré autour de la barrière et du strike.
+Une knock-out annule le paiement si la barrière est touchée, alors qu’une knock-in l’active.
+Le payout fixe simplifie le montant mais rend le risque de saut très important.
+Les paramètres essentiels sont la barrière, sa direction, son type in/out, le montant fixe et l’éventuel strike.
+La vega et le theta dépendent de la proximité de la barrière et du temps restant.
+La couverture est délicate car la valeur saute quand la barrière est franchie.
+Le produit est courant dans les structurés à rendement élevé où la probabilité de survie est rémunérée.
+Le payoff final est une fonction en escalier conditionnée par le scénario de barrière et le niveau final.""",
+                "basket_graph": """Une option basket paie sur une combinaison pondérée de plusieurs actifs, souvent une moyenne.
+La corrélation module la diversification : plus elle est faible, plus la volatilité du panier est réduite.
+Le payoff final est de type call ou put sur la valeur agrégée du panier.
+La vega dépend des vols individuelles et de la corrélation, chaque composante contribuant au risque global.
+Le delta est réparti selon les pondérations et peut se déplacer si un actif domine la variation du panier.
+Le produit est path-indépendant si le payoff ne dépend que de la valeur terminale du panier.
+Il est utilisé pour exprimer une vue macro ou sectorielle tout en lissant le risque idiosyncratique.
+Le prix est sensible à la structure de corrélation : une hausse de corrélation augmente la vol du panier.
+La couverture nécessite des rééquilibrages sur chaque actif composant.
+Le graphe de payoff ressemble à une vanilla appliquée à la valeur agrégée du panier.""",
+                "european_graph": """Une option européenne n’est exerçable qu’à l’échéance, avec un payoff vanilla au strike K.
+La prime dépend des paramètres classiques S0, K, T, r, dividende et volatilité implicite.
+L’absence d’exercice anticipé simplifie la valorisation et la couverture.
+Un call sur un actif sans dividende ne s’exerce jamais avant T, car la valeur temps est conservée.
+Le delta, le gamma, le theta et la vega suivent les profils standards du modèle Black-Scholes-Merton.
+La surface de prix se lit en fonction de S et K autour des valeurs communes choisies.
+Le risque pour l’acheteur est limité à la prime payée, le gain potentiellement illimité pour un call.
+La put-call parity relie les prix call et put via le terme forward S0·e^{(r-q)T}.
+La volatilité implicite mesurée sur ces options sert de référence pour d’autres produits.
+Le payoff final est linéaire au-dessus ou en dessous du strike selon qu’il s’agit d’un call ou d’un put.""",
+                "straddle_graph": """Un straddle combine l’achat simultané d’un call et d’un put au même strike K.
+Le profil est symétrique et gagne en cas de forte hausse ou de forte baisse du sous-jacent.
+Le coût initial est élevé, car on paie deux primes, ce qui crée une zone de perte autour de K.
+Le delta initial est proche de zéro mais évolue rapidement dès que le spot s’éloigne du strike.
+Le gamma est élevé près du strike, offrant une forte convexité autour de K.
+La vega est positive, car une hausse de volatilité augmente la valeur des deux jambes.
+Le theta est négatif et peut être important, car deux options perdent de la valeur temps.
+Le break-even se situe à K ± (somme des primes), définissant la zone de profit.
+Le produit sert à parier sur la magnitude d’un mouvement sans biais directionnel.
+Le payoff final forme un V double, somme des payoffs call et put au même strike.""",
+                "strangle_graph": """Un strangle achète un put OTM et un call OTM à deux strikes différents, plus éloignés que le spot.
+Le coût est inférieur à celui d’un straddle, mais il faut un mouvement plus grand pour être gagnant.
+La zone de perte est plus large autour du spot actuel, car les strikes sont décalés.
+Le delta initial est proche de zéro mais évolue lorsque le spot s’approche d’un des strikes.
+Le gamma est moins concentré qu’un straddle mais reste sensible autour des deux strikes.
+La vega est positive, l’option profitant d’une hausse de volatilité qui augmente la probabilité de franchir un strike.
+Le theta est négatif mais généralement plus faible qu’un straddle en valeur absolue.
+Les break-even se situent autour de chaque strike plus la prime correspondante.
+Le produit convient pour parier sur un mouvement important à moindre coût qu’un straddle.
+Le payoff final présente deux régions de profit au-delà des strikes, avec une zone plate de perte entre eux.""",
+                "call_spread_graph": """Un bull call spread achète un call à strike bas K1 et vend un call à strike plus haut K2.
+La jambe courte finance partiellement la jambe longue, réduisant le coût par rapport à un call nu.
+Le gain est plafonné au-dessus de K2, car la jambe vendue limite la participation à la hausse.
+Le delta est positif mais inférieur à celui d’un call nu, et le gamma est modéré.
+La vega est réduite, car une partie du risque de volatilité est vendue via la jambe courte.
+Le theta peut être moins négatif, la prime encaissée compensant la perte de valeur temps.
+La perte maximale est limitée à la prime nette payée, bornant le risque.
+Le produit convient à une vue haussière modérée, avec budget de prime réduit.
+Le profil reste directionnel, mais avec un plafond de gain défini par l’écart des strikes.
+Le payoff final monte entre K1 et K2 puis se stabilise une fois le plafond atteint.""",
+                "put_spread_graph": """Un bear put spread achète un put à strike haut K1 et vend un put à strike plus bas K2.
+La jambe courte réduit le coût, mais le gain potentiel est plafonné sous K2.
+Le delta est négatif mais plus faible en valeur absolue qu’un put nu, et le gamma est modéré.
+La vega est atténuée, car une partie du risque de volatilité est cédée via la jambe vendue.
+Le theta peut être moins négatif, la prime encaissée compensant l’érosion de la jambe longue.
+La perte maximale est la prime nette payée, tandis que le gain maximal est (K1-K2) moins la prime.
+Le produit cible une baisse modérée du sous-jacent plutôt qu’un scénario extrême.
+La sensibilité au skew put est importante car les deux strikes peuvent se pricier différemment.
+Le profil est borné : perte limitée au-dessus de K1, gain plafonné sous K2.
+Le payoff final descend entre K1 et K2 puis se stabilise une fois le plancher atteint.""",
+                "butterfly_graph": """Une butterfly call classique combine deux calls vendus au strike central et deux calls achetés aux ailes.
+Le profil crée un pic de gain autour du strike médian, avec un coût relativement faible.
+Le delta est proche de zéro au centre, tandis que le gamma est élevé près du strike central.
+La vega est négative, car on est net vendeur de volatilité sur la zone centrale.
+Le theta peut être positif autour du strike central, car la vente des options centrales s’érode plus vite.
+Le risque est limité à la prime nette payée si le spot s’éloigne fortement.
+Le gain maximal est atteint si le spot termine autour du strike médian à l’échéance.
+Le produit convient pour parier sur un range étroit et une volatilité en baisse.
+La largeur des ailes détermine l’ampleur du plateau de risque et de gain.
+Le payoff final forme une tente autour du strike central, avec des pertes limitées en dehors.""",
+                "condor_graph": """Un condor utilise quatre options à strikes échelonnés pour créer un plateau de gain plus large qu’une butterfly.
+Les deux options centrales sont vendues, tandis que les deux ailes sont achetées pour borner le risque.
+Le profil est plus plat et plus étendu au centre qu’une butterfly, avec un pic de gain moins aigu.
+Le delta reste proche de zéro autour du centre, et le gamma est plus doux.
+La vega est généralement négative, car la construction reste globalement short vol.
+Le theta peut être positif dans la zone centrale, la valeur temps des jambes courtes se dégradant plus vite.
+Le gain est limité entre les strikes intermédiaires, la perte est limitée aux extrêmes.
+La construction peut être en crédit ou en débit selon le placement des strikes et le niveau de vol.
+Le produit vise un range modéré plus large qu’une butterfly, avec un risque borné.
+Le payoff final offre un plateau central avec des pentes plus douces vers les pertes aux ailes.""",
+                "iron_condor_graph": """Un iron condor combine un put spread vendu et un call spread vendu pour encaisser un crédit initial.
+Le plateau de gain se situe entre les strikes courts, tant que le spot reste dans le corridor.
+La perte est limitée en dehors, bornée par la largeur des ailes longues achetées.
+Le delta est proche de zéro au centre, le gamma modéré, ce qui convient aux vues de range.
+La vega est négative, car la position est globalement short vol, et le theta est souvent positif au départ.
+Le placement des ailes longues et courtes ajuste le compromis entre crédit encaissé et largeur de range.
+Une hausse de volatilité ou un mouvement violent peut menacer le plateau et réduire le gain attendu.
+Le trade peut être débouclé avant échéance si la vol se comprime et que le spot reste dans le range.
+Le produit convient pour monétiser une attente de stagnation avec risque borné.
+Le payoff final présente un plateau central de profit et des pertes plafonnées de part et d’autre.""",
+                "iron_butterfly_graph": """Un iron butterfly vend un straddle au strike central et achète des ailes de protection plus éloignées.
+Le crédit initial est maximal si le spot reste proche du strike central à l’échéance.
+Les ailes longues bornent la perte en cas de mouvement extrême, rendant le risque limité.
+Le delta est proche de zéro autour du centre, mais le gamma est élevé près du strike central.
+La vega est négative et le theta positif, car la position vend de la valeur temps au cœur.
+Le produit vise un range étroit et une volatilité en baisse, avec un crédit supérieur à l’iron condor.
+Les break-even se situent autour du strike central plus ou moins la largeur des ailes moins le crédit net.
+La gestion active peut être requise si le spot s’éloigne trop du centre.
+La construction reste en crédit, avec une perte maximale bornée par l’écart ailes/centre.
+Le payoff final est une tente inversée centrée sur le strike, avec profit au centre et pertes plafonnées aux extrêmes.""",
             }
             text = desc_map.get(key_suffix, "")
             if not text:
