@@ -2953,8 +2953,8 @@ def run_app_options():
     def ui_heston_full_pipeline(auto_run: bool = False):
 
 
-        col_cfg1, col_cfg2 = st.columns(2)
-        with col_cfg1:
+        col_row = st.columns([3, 1])
+        with col_row[0]:
             ticker = st.text_input(
                 "Ticker (sous-jacent)",
                 value=st.session_state.get("tkr_common", "SPY"),
@@ -2965,7 +2965,12 @@ def run_app_options():
             st.session_state["common_underlying"] = ticker
             rf_rate = float(st.session_state.get("common_rate", 0.02))
             div_yield = float(st.session_state.get("common_dividend", 0.0))
+        with col_row[1]:
+            fetch_btn = st.button("Récupérer les données du ticker", width="stretch", key="heston_cboe_fetch")
 
+        col_cfg1, col_cfg2 = st.columns(2)
+        with col_cfg1:
+            pass  # réservé pour d’autres réglages si nécessaire
         with col_cfg2:
             span_mc = float(st.session_state.get("heatmap_span_value", 20.0))
             n_maturities = 40
@@ -2978,7 +2983,13 @@ def run_app_options():
             state.heston_S0_ref = None
             state.heston_calib_T_target = None
 
-        fetch_btn = st.button("Récupérer les données du ticker", width="stretch", key="heston_cboe_fetch")
+        auto_fetch = (
+            not st.session_state.get("heston_cboe_loaded_once", False)
+            and not st.session_state.get("heston_cboe_auto_fetched", False)
+        )
+        if auto_fetch:
+            st.session_state["heston_cboe_auto_fetched"] = True
+        fetch_btn = fetch_btn or auto_fetch
         st.divider()
 
         if fetch_btn:
