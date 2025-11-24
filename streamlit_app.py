@@ -3515,7 +3515,7 @@ def run_app_options():
                 xs = np.linspace(max(0.1, K * 0.5), K * 1.5, 100)
                 ys = [payoff_func(x, K, K2) for x in xs]
                 if strike_lines_override is None:
-                    strikes_to_plot = [K, K2]
+                    strikes_to_plot = [K]
                 elif callable(strike_lines_override):
                     strikes_to_plot = strike_lines_override(K, K2)
                 else:
@@ -4242,10 +4242,6 @@ def run_app_options():
         with tab_grp_exotics:
             tab_digital, tab_asset_on, tab_chooser, tab_quanto, tab_rainbow = st.tabs(["Digital", "Asset-or-nothing", "Chooser", "Quanto", "Rainbow"])
 
-        with tab_grp_basket:
-            (tab_basket,) = st.tabs(["Basket"])
-
-
         with tab_european:
             st.header("Option européenne")
             render_general_definition_explainer(
@@ -4501,6 +4497,12 @@ def run_app_options():
             )
             cpflag_am = option_label
             cpflag_am_char = option_char
+
+            with st.expander("📊 Graph payoff (américaine)", expanded=False):
+                xs = np.linspace(max(0.1, K_common * 0.5), K_common * 1.5, 120)
+                ys = [max(x - K_common, 0.0) if option_char == "c" else max(K_common - x, 0.0) for x in xs]
+                fig_pay = _payoff_plot(xs, ys, f"Payoff américaine ({cpflag_am})", strike_lines=[K_common])
+                st.plotly_chart(fig_pay, width="stretch")
 
             am_run_flag = st.session_state.get(_k("run_am_done"), False)
             if not am_run_flag:
@@ -5402,6 +5404,12 @@ def run_app_options():
                 st.info("Clique sur le bouton pour afficher les dropdowns et lancer le pricing Bermuda.")
 
             if bmd_run_flag:
+                with st.expander("📊 Graph payoff (Bermuda)", expanded=False):
+                    xs = np.linspace(max(0.1, K_common * 0.5), K_common * 1.5, 120)
+                    ys = [max(x - K_common, 0.0) if option_char == "c" else max(K_common - x, 0.0) for x in xs]
+                    fig_pay = _payoff_plot(xs, ys, f"Payoff bermuda ({cpflag_bmd})", strike_lines=[K_common])
+                    st.plotly_chart(fig_pay, width="stretch")
+
                 n_ex_dates_bmd = st.slider(
                     "Nombre de dates d'exercice Bermude",
                     min_value=2,
@@ -5468,9 +5476,7 @@ def run_app_options():
                         spot=S0_common,
                         misc={"n_ex_dates": int(n_ex_dates_bmd)},
                     )
-
-
-        with tab_basket:
+        with tab_grp_basket:
             st.header("Options basket")
             basket_run_flag = st.session_state.get(_k("run_basket_done"), False)
             if not basket_run_flag:
