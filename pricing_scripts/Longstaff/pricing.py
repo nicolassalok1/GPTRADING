@@ -1,3 +1,14 @@
+"""
+Pricing utilities for Longstaff-Schwartz and vanilla option models.
+
+Responsibilities:
+- Define simple stochastic processes (GBM, Heston) and option container.
+- Provide Monte Carlo, Longstaff-Schwartz, Black-Scholes-Merton, and CRR pricing.
+
+External dependencies:
+- NumPy/Pandas for numerical routines, SciPy for distributions.
+"""
+
 import numpy as np
 from numpy.polynomial import Polynomial
 from scipy.stats import norm
@@ -10,7 +21,7 @@ import pandas as pd
 
 
 class StochasticProcess(ABC):
-    """Represente a Stochastic process"""
+    """Abstract stochastic process contract; subclasses implement simulate()."""
 
     @abstractmethod
     def simulate(self):
@@ -20,8 +31,11 @@ class StochasticProcess(ABC):
 @dataclass
 class GeometricBrownianMotion(StochasticProcess):
     """
-    A classic geometric brownian motion which can be simulated.
-    The closed form formula allow a fully vectorized calculation of the paths.
+    Geometric Brownian Motion with vectorized path generation.
+
+    Attributes:
+        mu: Drift term.
+        sigma: Volatility term.
     """
 
     mu: float
@@ -30,7 +44,18 @@ class GeometricBrownianMotion(StochasticProcess):
     def simulate(
         self, s0: float, T: int, n: int, m: int, v0: float = None
     ) -> pd.DataFrame:  # n = number of paths, m = number of discretization points
+        """
+        Simulate GBM paths using exact discretization.
 
+        Args:
+            s0: Initial spot.
+            T: Maturity in years.
+            n: Number of paths.
+            m: Number of time steps.
+            v0: Unused placeholder for interface parity.
+        Returns:
+            DataFrame of shape (m+1, n) with simulated spot levels.
+        """
         dt = T / m
         np.random.seed(0)
         W = np.cumsum(np.sqrt(dt) * np.random.randn(m + 1, n), axis=0)
@@ -46,7 +71,14 @@ class GeometricBrownianMotion(StochasticProcess):
 @dataclass
 class HestonProcess(StochasticProcess):
     """
-    An Heston process which can be simulated using Milstein schema.
+    Heston stochastic volatility process simulated via Milstein scheme.
+
+    Attributes:
+        mu: Price drift.
+        kappa: Variance mean-reversion speed.
+        theta: Long-run variance.
+        eta: Volatility of variance.
+        rho: Correlation between price and variance Brownian motions.
     """
 
     mu: float
@@ -58,7 +90,18 @@ class HestonProcess(StochasticProcess):
     def simulate(
         self, s0: float, v0: float, T: int, n: int, m: int
     ) -> pd.DataFrame:  # n = number of paths, m = number of discretization points
+        """
+        Simulate Heston paths with Milstein correction for variance.
 
+        Args:
+            s0: Initial spot.
+            v0: Initial variance.
+            T: Maturity in years.
+            n: Number of paths.
+            m: Number of time steps.
+        Returns:
+            DataFrame of shape (m+1, n) with simulated spot levels.
+        """
         dt = T / m
         z1 = np.random.randn(m, n)
         z2 = self.rho * z1 + np.sqrt(1 - self.rho**2) * np.random.randn(m, n)
@@ -90,7 +133,7 @@ class HestonProcess(StochasticProcess):
 @dataclass
 class Option:
     """
-    Representation of an option derivative
+    Vanilla European option container used across pricing routines.
     """
 
     s0: float
@@ -100,13 +143,30 @@ class Option:
     call: bool = True
 
     def payoff(self, s: np.ndarray) -> np.ndarray:
+        """
+        Compute intrinsic payoff for input underlying levels.
+
+        Args:
+            s: NumPy array of underlying prices.
+        Returns:
+            NumPy array of option payoffs for call/put.
+        """
         payoff = np.maximum(s - self.K, 0) if self.call else np.maximum(self.K - s, 0)
         return payoff
 
 
 def monte_carlo_simulation(option: Option, process: StochasticProcess, n: int, m: int, alpha: float = 0.05) -> float:
     """
-    Given an option and a process followed by the underlying, calculate the classic monte carlo price estimator
+    Price a European option using plain Monte Carlo.
+
+    Args:
+        option: Option contract to price.
+        process: Stochastic process driving the underlying.
+        n: Number of simulated paths.
+        m: Number of time steps.
+        alpha: Two-sided confidence interval level.
+    Returns:
+        Rounded Monte Carlo price estimate.
     """
     # n = number of paths, m = number of discretization points
     s = process.simulate(s0=option.s0, v0=option.v0, T=option.T, n=n, m=m)
@@ -130,7 +190,16 @@ def monte_carlo_simulation(option: Option, process: StochasticProcess, n: int, m
 
 def monte_carlo_simulation_LS(option: Option, process: StochasticProcess, n: int, m: int, alpha: float = 0.05) -> float:
     """
-    Given an option and a process followed by the underlying, calculate the option value using the Longstaff-Schwartz algorithme
+    Price an American-style option with Longstaff-Schwartz Monte Carlo.
+
+    Args:
+        option: Option contract to price.
+        process: Stochastic process driving the underlying.
+        n: Number of paths.
+        m: Number of time steps.
+        alpha: Unused confidence parameter kept for interface symmetry.
+    Returns:
+        None (prints price); price is computed but not returned explicitly.
     """
     # n = number of path, m = number of discretization points
 
@@ -156,7 +225,14 @@ def monte_carlo_simulation_LS(option: Option, process: StochasticProcess, n: int
 
 def black_scholes_merton(r, sigma, option: Option):
     """
-    Calculate the price of vanilla options using BSM formula
+    Closed-form Black-Scholes-Merton valuation for European options.
+
+    Args:
+        r: Risk-free rate.
+        sigma: Volatility.
+        option: Option contract to price (call/put).
+    Returns:
+        Rounded BSM price.
     """
     d1 = (np.log(option.s0 / option.K) + (r + sigma**2 / 2) * option.T) / (sigma * np.sqrt(option.T))
     d2 = d1 - sigma * np.sqrt(option.T)
@@ -169,7 +245,17 @@ def black_scholes_merton(r, sigma, option: Option):
 
 def crr_pricing(r=0.1, sigma=0.2, option: Option = Option(s0=100, T=1, K=100, call=False), n=250):
     """
-    Calculate the price of an American option using a Cox–Ross–Rubinstein tree.
+    Price an American option using a Cox–Ross–Rubinstein binomial tree.
+
+    Args:
+        r: Risk-free rate.
+        sigma: Volatility.
+        option: Option contract to price.
+        n: Number of time steps (tree depth).
+    Returns:
+        float: Option value at t0.
+    Raises:
+        ValueError: If n is not positive.
     """
     if n <= 0:
         raise ValueError("n must be positive for the CRR tree.")

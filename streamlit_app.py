@@ -1,3 +1,18 @@
+"""
+Streamlit-based trading and options pricing dashboard.
+
+Responsibilities:
+- Render the multi-tab UI (dashboard, trading systems, forwards, options pricing).
+- Persist portfolios/systems/options in local JSON files under ./database.
+- Call external services: Alpaca (positions/orders/prices), yfinance (price history),
+  OpenAI ChatGPT, CBOE, and various pricing libraries (torch, tensorflow, scipy, etc.).
+
+Side effects & assumptions:
+- Reads environment variables (e.g., OPENAI_API_KEY) and local JSON files.
+- Performs network I/O to market/pricing APIs; failures are surfaced in the UI.
+- Writes to disk in the working directory; callers must ensure filesystem access.
+"""
+
 import streamlit as st
 from openai import OpenAI
 import os
@@ -38,6 +53,14 @@ LEGACY_EXPIRED_FILE = DB_DIR / "expired_options.json"
 load_dotenv()
 
 def run_app_options():
+    """
+    Render the options pricing tab (legacy monolith) inside the main Streamlit app.
+
+    This function wires pricing models (Longstaff, Heston, lookback, etc.), visualization,
+    and the ability to push priced structures into the unified dashboard JSON store.
+    Side effects: imports heavy numerical libs, sets TensorFlow flags, reads/writes JSON
+    files in ./database, and invokes networked data sources (yfinance, requests).
+    """
     import io
     import math
     import os
@@ -2962,21 +2985,18 @@ def run_app_options():
     def ui_heston_full_pipeline(auto_run: bool = False):
 
 
-        col_row = st.columns([3, 1], gap="small")
-        with col_row[0]:
-            ticker = st.text_input(
-                "Ticker (sous-jacent)",
-                value=st.session_state.get("tkr_common", "SPY"),
-                key="heston_cboe_ticker",
-                help="Code du sous-jacent coté au CBOE utilisé pour la calibration Heston.",
-            ).strip().upper()
-            st.session_state["tkr_common"] = ticker
-            st.session_state["common_underlying"] = ticker
-            rf_rate = float(st.session_state.get("common_rate", 0.02))
-            div_yield = float(st.session_state.get("common_dividend", 0.0))
-        with col_row[1]:
-            st.write("")  # aligne verticalement le bouton sur l'input
-            fetch_btn = st.button("Récupérer les données du ticker", type="primary", key="heston_cboe_fetch")
+        # Ticker input + fetch action stacked vertically (pour éviter un layout en colonnes)
+        ticker = st.text_input(
+            "Ticker (sous-jacent)",
+            value=st.session_state.get("tkr_common", "SPY"),
+            key="heston_cboe_ticker",
+            help="Code du sous-jacent coté au CBOE utilisé pour la calibration Heston.",
+        ).strip().upper()
+        st.session_state["tkr_common"] = ticker
+        st.session_state["common_underlying"] = ticker
+        rf_rate = float(st.session_state.get("common_rate", 0.02))
+        div_yield = float(st.session_state.get("common_dividend", 0.0))
+        fetch_btn = st.button("Récupérer les données du ticker", type="primary", key="heston_cboe_fetch")
 
         col_cfg1, col_cfg2 = st.columns(2)
         with col_cfg1:
@@ -6120,6 +6140,15 @@ st.set_page_config(page_title="AI Trading Bot", page_icon="📈", layout="wide",
 # Helper functions
 @st.cache_data(ttl=10)
 def fetch_portfolio():
+    """
+    Fetch live equity positions from Alpaca and project them into a UI-friendly list.
+
+    Returns:
+        list[dict]: Each entry contains Symbol, Quantity, prices, P/L, and side.
+    Side effects:
+        - Network call to Alpaca REST API.
+        - Displays Streamlit error on failure.
+    """
     try:
         positions = api.list_positions()
         portfolio = []
@@ -6139,6 +6168,15 @@ def fetch_portfolio():
 
 @st.cache_data(ttl=10)
 def fetch_open_orders():
+    """
+    Fetch open orders from Alpaca for display.
+
+    Returns:
+        list[dict]: Orders with symbol, qty, limit price (or Market), and side.
+    Side effects:
+        - Network call to Alpaca REST API.
+        - Displays Streamlit error on failure.
+    """
     try:
         orders = api.list_orders(status='open')
         open_orders = []
@@ -6155,6 +6193,16 @@ def fetch_open_orders():
         return []
 
 def get_data(symbol):
+    """
+    Retrieve a spot price for a ticker using Alpaca first, then yfinance as fallback.
+
+    Args:
+        symbol (str): Ticker symbol to quote.
+    Returns:
+        dict: {"price": float} with -1 if no source returned a valid price.
+    Side effects:
+        - Network calls to Alpaca and yfinance.
+    """
     symbol = (symbol or "").strip().upper()
     # 1) Alpaca live trade
     try:
@@ -6172,6 +6220,7 @@ def get_data(symbol):
     return {"price": -1}
 
 def load_equities():
+    """Load configured trading systems (equities) from disk; returns {} on failure."""
     try:
         with open(DATA_FILE, 'r') as f:
             return json.load(f)
@@ -6179,10 +6228,12 @@ def load_equities():
         return {}
 
 def save_equities(equities):
+    """Persist trading systems (equities) to disk."""
     with open(DATA_FILE, 'w') as f:
         json.dump(equities, f, indent=2)
 
 def load_portfolio():
+    """Load the spot portfolio snapshot from disk; returns {} on failure."""
     try:
         with open(PORTFOLIO_FILE, 'r') as f:
             return json.load(f)
@@ -6190,11 +6241,13 @@ def load_portfolio():
         return {}
 
 def save_portfolio(portfolio):
+    """Persist the spot portfolio snapshot to disk."""
     with open(PORTFOLIO_FILE, 'w') as f:
         json.dump(portfolio, f, indent=2)
 
 
 def load_sell_systems():
+    """Load automated sell systems configuration from disk; returns {} on failure."""
     try:
         with open(SELL_SYSTEMS_FILE, 'r') as f:
             return json.load(f)
@@ -6203,11 +6256,19 @@ def load_sell_systems():
 
 
 def save_sell_systems(sell_systems):
+    """Persist automated sell systems configuration to disk."""
     with open(SELL_SYSTEMS_FILE, 'w') as f:
         json.dump(sell_systems, f, indent=2)
 
 
 def load_options_book():
+    """
+    Load the unified options book from disk, preferring the current file and
+    falling back to the legacy file if needed.
+
+    Returns:
+        dict: Map of option_id -> option entry; {} if nothing is found/parseable.
+    """
     for path in (OPTIONS_BOOK_FILE, OPTIONS_BOOK_FILE_LEGACY):
         try:
             with open(path, 'r') as f:
@@ -6249,17 +6310,34 @@ def save_options_book(book):
 
 
 def _split_options_book(book: dict):
+    """
+    Partition the unified book into open vs expired slices.
+
+    Args:
+        book (dict): Full options book keyed by option id.
+    Returns:
+        tuple(dict, dict): (active, expired) maps.
+    """
     active = {k: v for k, v in book.items() if v.get("status", "open") == "open"}
     expired = {k: v for k, v in book.items() if v.get("status") == "expired"}
     return active, expired
 
 
 def load_options_portfolio():
+    """Return only active option positions from the unified book."""
     active, _ = _split_options_book(load_options_book())
     return active
 
 
 def save_options_portfolio(options_portfolio):
+    """
+    Persist active options merged with any expired entries back to disk.
+
+    Args:
+        options_portfolio (dict): Active/open options keyed by id.
+    Returns:
+        dict: Full merged book (active + expired) written to disk.
+    """
     book = load_options_book()
     _, expired = _split_options_book(book)
     merged = dict(expired)
@@ -6272,12 +6350,21 @@ def save_options_portfolio(options_portfolio):
 
 
 def load_expired_options():
+    """Return expired/closed options from the unified book (migration safe)."""
     migrate_legacy_expired_options()
     _, expired = _split_options_book(load_options_book())
     return expired
 
 
 def save_expired_options(expired_options):
+    """
+    Persist expired options merged with active ones, marking each entry as expired.
+
+    Args:
+        expired_options (dict): Expired option entries keyed by id.
+    Returns:
+        dict: Full merged book (active + expired) written to disk.
+    """
     active = load_options_portfolio()
     book = dict(active)
     for option_id, entry in expired_options.items():
@@ -6324,6 +6411,15 @@ def migrate_legacy_expired_options():
 
 
 def _compute_leg_payoff(leg: dict, spot: float) -> float:
+    """
+    Compute payoff contribution for a single leg (call/put, long/short).
+
+    Args:
+        leg: Leg definition containing option_type, strike, qty, side.
+        spot: Underlying level at evaluation.
+    Returns:
+        Signed payoff scaled by quantity.
+    """
     option_type = (leg.get("option_type") or leg.get("type") or "call").lower()
     strike = float(leg.get("strike", 0.0) or 0.0)
     qty = float(leg.get("qty", 1.0) or 1.0)
@@ -6334,6 +6430,18 @@ def _compute_leg_payoff(leg: dict, spot: float) -> float:
 
 
 def compute_option_payoff(option: dict, spot: float) -> float:
+    """
+    Evaluate payoff for a stored option/structure at a given spot.
+
+    Supports multi-leg structures, Asian, digital, barrier, straddle/strangle,
+    vanilla spreads, and vanilla fallback.
+
+    Args:
+        option: Stored option dict (dashboard schema).
+        spot: Underlying level to evaluate payoff.
+    Returns:
+        float: Payoff (positive for long exposure, negative if encoded in legs).
+    """
     legs = option.get("legs") or []
     if legs:
         return sum(_compute_leg_payoff(leg, spot) for leg in legs)
@@ -6419,6 +6527,16 @@ def compute_option_payoff(option: dict, spot: float) -> float:
 
 
 def compute_option_pnl(option: dict, spot_at_event: float, mark_price: float | None = None) -> dict:
+    """
+    Compute PnL metadata for an option position given an event spot or mark price.
+
+    Args:
+        option: Stored option dict with avg_price/side/quantity.
+        spot_at_event: Underlying level at expiration/event.
+        mark_price: Optional mark-to-market override.
+    Returns:
+        dict: payoff_per_unit, pnl_per_unit, pnl_total.
+    """
     premium = float(option.get("avg_price", 0.0) or 0.0)
     quantity = float(option.get("quantity", 1) or 0.0)
     side = (option.get("side") or "long").lower()
@@ -6543,8 +6661,18 @@ def describe_expired_option_payoff(option: dict, spot_at_event: float | None = N
 
 
 def mark_option_market_value(option: dict, chain_entry: dict | None = None) -> tuple[float, float | None, float, float, str]:
-    """Return (spot, T_years, sigma, mark_price, method) for an option entry.
-    If chain_entry provided (CBOE row), use its spot/iv/T as primary source.
+    """
+    Derive a model mark for an option position.
+
+    Resolution order:
+    - If chain_entry provided (CBOE row), use its spot/IV/T.
+    - If misc contains Heston params, price via Carr-Madan; else BSM; else intrinsic payoff.
+
+    Args:
+        option: Stored option dict (dashboard schema).
+        chain_entry: Optional CBOE chain row with spot/iv/T hints.
+    Returns:
+        tuple: (spot, T_years, sigma_used, mark_price, method_label).
     """
     underlying = option.get("underlying")
     spot_data = get_data(underlying) if underlying else {"price": 0}
@@ -6645,6 +6773,16 @@ def mark_option_market_value(option: dict, chain_entry: dict | None = None) -> t
 
 
 def add_option_to_dashboard(record: dict) -> str:
+    """
+    Normalize and persist an option/structure into the unified options book.
+
+    Args:
+        record: Raw option payload (pricing UI or chain selection).
+    Returns:
+        str: Assigned option id.
+    Side effects:
+        - Writes to options_portfolio.json (and legacy mirror).
+    """
     now = time.strftime('%Y-%m-%d %H:%M:%S')
     book = load_options_book()
     option_id = record.get("id") or record.get("contract_symbol") or record.get("label") or f"opt_{int(time.time() * 1000)}"
@@ -6707,6 +6845,7 @@ def add_option_to_dashboard(record: dict) -> str:
 
 
 def load_custom_options():
+    """Load custom options book (pricing-saved) from disk; returns {} on failure."""
     try:
         with open(CUSTOM_OPTIONS_FILE, 'r') as f:
             return json.load(f)
@@ -6715,11 +6854,13 @@ def load_custom_options():
 
 
 def save_custom_options(custom_options):
+    """Persist custom options to disk."""
     with open(CUSTOM_OPTIONS_FILE, 'w') as f:
         json.dump(custom_options, f, indent=2)
 
 
 def load_forwards():
+    """Load forward positions from disk; returns {} on failure."""
     try:
         with open(FORWARDS_FILE, 'r') as f:
             return json.load(f)
@@ -6728,6 +6869,7 @@ def load_forwards():
 
 
 def save_forwards(forwards):
+    """Persist forward positions to disk."""
     with open(FORWARDS_FILE, 'w') as f:
         json.dump(forwards, f, indent=2)
 
@@ -6741,6 +6883,16 @@ def floor_3(v: float) -> float:
     return math.floor(v * 1000.0) / 1000.0
 
 def buy_asset(symbol, quantity, price):
+    """
+    Update spot portfolio for a buy (or reducing a short).
+
+    Args:
+        symbol: Ticker symbol.
+        quantity: Units to add.
+        price: Execution price.
+    Returns:
+        dict | None: Updated position or None if closed.
+    """
     portfolio = load_portfolio()
     now = time.strftime('%Y-%m-%d %H:%M:%S')
 
@@ -6791,6 +6943,16 @@ def buy_asset(symbol, quantity, price):
 
 
 def sell_asset(symbol, quantity, price):
+    """
+    Update spot portfolio for a sell/short action.
+
+    Args:
+        symbol: Ticker symbol.
+        quantity: Units to sell.
+        price: Execution price.
+    Returns:
+        bool: True if applied.
+    """
     portfolio = load_portfolio()
     now = time.strftime('%Y-%m-%d %H:%M:%S')
 
@@ -6842,6 +7004,14 @@ def sell_asset(symbol, quantity, price):
 
 
 def process_sell_systems():
+    """
+    Run automated sell systems against current market data.
+
+    - Loads configured systems and current portfolio.
+    - Triggers sells when price <= configured levels.
+    - Persists level state and portfolio updates.
+    Side effects: network price fetches, JSON writes, Streamlit messages.
+    """
     sell_systems = load_sell_systems()
     if not sell_systems:
         st.info("No sell systems configured.")
@@ -6908,6 +7078,22 @@ def trade_option_contract(
     price,
     spot_at_trade=None,
 ):
+    """
+    Update options portfolio positions with a trade (buy/sell/close).
+
+    Args:
+        contract_symbol: OCC or custom id.
+        underlying_symbol: Underlying ticker.
+        option_type: "call" or "put".
+        strike: Strike price.
+        expiration: Expiration ISO date.
+        side: "long" or "short".
+        quantity: Units traded.
+        price: Execution price.
+        spot_at_trade: Optional underlying level at trade time.
+    Returns:
+        dict | None: Updated position or None if closed.
+    """
     options_portfolio = load_options_portfolio()
     now = time.strftime('%Y-%m-%d %H:%M:%S')
 
@@ -6980,6 +7166,17 @@ def trade_option_contract(
 
 
 def fetch_options_chain(symbol):
+    """
+    Retrieve delayed CBOE option chain for a given ticker.
+
+    Args:
+        symbol: Underlying ticker symbol.
+    Returns:
+        list[dict]: Chain rows with symbol, strike, expiration, T, price, iv.
+    Side effects:
+        - Network I/O to cdn.cboe.com.
+        - Streamlit error message on failure.
+    """
     try:
         url = f"https://cdn.cboe.com/api/global/delayed_quotes/options/{symbol.upper()}.json"
         response = requests.get(url, timeout=10)
@@ -7063,7 +7260,17 @@ def norm_cdf(x: float) -> float:
 def black_scholes_price(S: float, K: float, T: float, r: float, sigma: float, option_type: str, q: float = 0.0) -> float:
     """
     Black-Scholes price for a European option.
-    option_type: "call" or "put"
+
+    Args:
+        S: Spot price.
+        K: Strike price.
+        T: Time to maturity in years.
+        r: Risk-free rate.
+        sigma: Volatility.
+        option_type: "call" or "put".
+        q: Continuous dividend yield.
+    Returns:
+        float: BSM theoretical price; falls back to intrinsic if inputs degenerate.
     """
     if S <= 0 or K <= 0 or T <= 0 or sigma <= 0:
         if option_type == "call":
@@ -7151,6 +7358,17 @@ def process_expired_options():
         save_options_book(book)
 
 def chatgpt_response(message: str):
+    """
+    Call OpenAI ChatGPT with portfolio/orders context and user question.
+
+    Args:
+        message: User prompt/question.
+    Returns:
+        str: Assistant response or error string.
+    Side effects:
+        - Network call to OpenAI API.
+        - Reads OPENAI_API_KEY from environment.
+    """
     try:
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         portfolio_data = json.dumps(fetch_portfolio(), indent=2)
@@ -7198,6 +7416,15 @@ def chatgpt_response(message: str):
         return f"Error: {str(e)}"
 
 def get_max_entry_price(symbol):
+    """
+    Return the maximum filled average price for a symbol from recent orders.
+
+    Args:
+        symbol: Ticker symbol to inspect.
+    Returns:
+        float: Highest filled_avg_price or -1 if none.
+    Side effects: Alpaca list_orders call; Streamlit error on failure.
+    """
     try:
         orders = api.list_orders(status="filled", limit=50)
         prices = [float(order.filled_avg_price) for order in orders if order.filled_avg_price and order.symbol == symbol]
@@ -7207,6 +7434,15 @@ def get_max_entry_price(symbol):
         return 0
 
 def place_initial_order(symbol):
+    """
+    Submit a market buy order (qty=1) via Alpaca.
+
+    Args:
+        symbol: Ticker to buy.
+    Returns:
+        bool: True if submitted, False on error.
+    Side effects: Network order placement and Streamlit messaging.
+    """
     try:
         api.submit_order(
             symbol=symbol,
@@ -7223,6 +7459,16 @@ def place_initial_order(symbol):
         return False
 
 def place_limit_order(symbol, price):
+    """
+    Submit a limit buy order (qty=1) via Alpaca.
+
+    Args:
+        symbol: Ticker to buy.
+        price: Limit price.
+    Returns:
+        bool: True on success, False on error.
+    Side effects: Network order placement and Streamlit messaging.
+    """
     try:
         api.submit_order(
             symbol=symbol,

@@ -29,6 +29,7 @@ DEFAULT_RF = float(os.getenv("DEFAULT_RF_RATE", "0.02"))
 
 
 def _fetch_from_fred(series_id: str) -> float:
+    """Fetch the latest FRED value for a series id and return as float."""
     url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
     resp = requests.get(url, timeout=5)
     resp.raise_for_status()
@@ -42,6 +43,7 @@ def _fetch_from_fred(series_id: str) -> float:
 
 
 def _fetch_last_close(symbol: str) -> float:
+    """Fetch latest daily close via yfinance with retries."""
     last_err = None
     for _ in range(MAX_RETRIES):
         try:
@@ -57,6 +59,14 @@ def _fetch_last_close(symbol: str) -> float:
 
 
 def compute_r(T: float) -> float:
+    """
+    Interpolate risk-free rate r(T) from available proxies or fall back to default.
+
+    Args:
+        T: Target maturity in years.
+    Returns:
+        float: Risk-free rate in decimal.
+    """
     points: List[Tuple[float, float]] = []
     for sym, mat in RATE_SYMBOLS.items():
         try:
@@ -89,6 +99,7 @@ def compute_r(T: float) -> float:
 
 
 def main():
+    """CLI entrypoint: read T from argv, compute r(T), print decimal value."""
     try:
         T = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
     except Exception:
